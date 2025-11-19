@@ -1,0 +1,17 @@
+{
+  "accountAssociation": {
+    "header": "eyJmaWQiOjM1MDkxMSwidHlwZSI6ImN1c3RvZHkiLCJrZXkiOiIweDJGREVmM0Y0NzBlQ2QyQmM5YTk3NzU2OEM0M0FEMzg2MGMxNjExRDgifQ",
+    "payload": "eyJkb21haW4iOiJjb21wdS1za2lsbGVyLWZyb250ZW5kLnZlcmNlbC5hcHAifQ",
+    "signature": "/oHhfCMuZl74YCQxiitO9g8ZGQ+vKmVcEJi3CSBXHtU0GobDvYFLIg+9DpeigbTOYquNAgVKYyDAcNGB6F8OYBw="
+  },
+  "miniapp": {
+    "version": "1",
+    "name": "Skiller",
+    "iconUrl": "https://compu-skiller-frontend.vercel.app/icon.png",
+    "homeUrl": "https://compu-skiller-frontend.vercel.app",
+    "imageUrl": "https://compu-skiller-frontend.vercel.app/image.png",
+    "buttonTitle": "Play",
+    "splashImageUrl": "https://compu-skiller-frontend.vercel.app/splash.png",
+    "splashBackgroundColor": "#000000"
+  }
+}

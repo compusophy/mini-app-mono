@@ -1,353 +1,272 @@
 <script lang="ts">
-	import { createPublicClient, createWalletClient, custom, http } from 'viem';
-	import { base } from 'viem/chains';
-	import { contractABI, contractAddress } from '$lib/contract';
+  import { onMount } from 'svelte';
+  import { sdk } from '@farcaster/miniapp-sdk';
+  import { config } from '$lib/wagmi';
+  import { connect, getAccount, watchAccount, getWalletClient, getPublicClient } from '@wagmi/core';
+  import type { Address } from 'viem';
+  import { base } from 'viem/chains';
+  import { ABIS } from '$lib/abis';
+  import addresses from '$lib/addresses.json';
 
-	let greeting = $state('Loading...');
-	let newGreeting = $state('');
-	let account = $state<string | null>(null);
-	let isConnected = $state(false);
-    let status = $state('');
-    let txHash = $state<string | null>(null);
+  const CONTRACT_ADDRESSES = addresses;
 
-	async function switchToBaseMainnet() {
-		if (!window.ethereum) return false;
-		
-		try {
-			await window.ethereum.request({
-				method: 'wallet_switchEthereumChain',
-				params: [{ chainId: '0x2105' }], // Base Mainnet chain ID in hex
-			});
-			return true;
-		} catch (switchError: any) {
-			// This error code indicates that the chain has not been added to MetaMask
-			if (switchError.code === 4902) {
-				try {
-					await window.ethereum.request({
-						method: 'wallet_addEthereumChain',
-						params: [{
-							chainId: '0x2105',
-							chainName: 'Base',
-							nativeCurrency: {
-								name: 'ETH',
-								symbol: 'ETH',
-								decimals: 18
-							},
-							rpcUrls: ['https://mainnet.base.org'],
-							blockExplorerUrls: ['https://basescan.org']
-						}],
-					});
-					return true;
-				} catch (addError) {
-					console.error('Failed to add Base network:', addError);
-					return false;
-				}
-			}
-			console.error('Failed to switch network:', switchError);
-			return false;
-		}
-	}
+  let account: Address | null = null;
+  let profiles: Array<{ id: bigint, image: string, tba: Address, axeBalance: bigint }> = [];
+  let loading = false;
 
-	async function connectWallet() {
-		if (!window.ethereum) {
-			status = 'No wallet found. Please install MetaMask or similar.';
-			return;
-		}
+  onMount(async () => {
+    try {
+        await sdk.actions.ready();
+    } catch (e) {
+        console.error("Farcaster SDK ready error:", e);
+    }
 
-		try {
-			// Switch to Base Mainnet first
-			status = 'Switching to Base Mainnet...';
-			const switched = await switchToBaseMainnet();
-			if (!switched) {
-				status = 'Please switch to Base Mainnet manually in your wallet.';
-				return;
-			}
-
-			const walletClient = createWalletClient({
-				chain: base,
-				transport: custom(window.ethereum)
-			});
-
-			const [address] = await walletClient.requestAddresses();
-			account = address;
-			isConnected = true;
-            status = 'Connected to Base Mainnet';
-            await fetchGreeting();
-		} catch (error) {
-			console.error(error);
-			status = 'Failed to connect wallet.';
-		}
-	}
-
-	async function fetchGreeting() {
-		if (!account) return;
-
-		const publicClient = createPublicClient({
-			chain: base,
-			transport: http('https://mainnet.base.org') // Use Base Mainnet RPC
-		});
-
-		try {
-			const data = await publicClient.readContract({
-				address: contractAddress,
-				abi: contractABI,
-				functionName: 'greet'
-			});
-			greeting = data as string;
-		} catch (e: any) {
-            console.error('Fetch error:', e);
-			greeting = `Error: ${e?.message || 'Failed to fetch greeting'}`;
-		}
-	}
-
-	async function updateGreeting() {
-		if (!account || !newGreeting) return;
-        status = 'Updating...';
-
-		try {
-			// Check and switch network if needed
-			const currentChainId = await window.ethereum.request({ method: 'eth_chainId' });
-			if (currentChainId !== '0x2105') { // Base Mainnet
-				status = 'Switching to Base Mainnet...';
-				const switched = await switchToBaseMainnet();
-				if (!switched) {
-					status = 'Please switch to Base Mainnet to continue.';
-					return;
-				}
-			}
-
-			const walletClient = createWalletClient({
-				chain: base,
-				transport: custom(window.ethereum)
-			});
-
-			const publicClient = createPublicClient({
-				chain: base,
-				transport: custom(window.ethereum)
-			});
-
-			const hash = await walletClient.writeContract({
-				address: contractAddress,
-				abi: contractABI,
-				functionName: 'setGreeting',
-				args: [newGreeting],
-				account: account as `0x${string}`
-			});
-            
-            status = `Transaction sent! Waiting for confirmation...`;
-            
-            // Wait for transaction receipt
-            const receipt = await publicClient.waitForTransactionReceipt({ hash });
-            
-            if (receipt.status === 'success') {
-                newGreeting = ''; // Clear input
-                txHash = hash; // Store hash for link
-                await fetchGreeting(); // Refresh greeting automatically
-                status = 'Success! Transaction confirmed.';
-            } else {
-                status = `Transaction failed: ${hash}`;
-                txHash = null;
+    watchAccount(config, {
+        onChange(data) {
+            account = data.address ?? null;
+            if (account) {
+                loadProfiles();
             }
-		} catch (error: any) {
-			console.error('Update error:', error);
-			txHash = null; // Clear hash on error
-			let errorMsg = 'Error updating greeting';
-			if (error?.message) {
-				if (error.message.includes('chain')) {
-					errorMsg = 'Please switch to Base Mainnet in your wallet.';
-				} else {
-					errorMsg += `: ${error.message}`;
-				}
-			} else if (typeof error === 'string') {
-				errorMsg += `: ${error}`;
-			}
-			status = errorMsg;
-		}
-	}
-    
-    $effect(() => {
-        // Auto connect if already permitted?
-        // For now, manual connect.
+        }
     });
 
+    // Auto-connect if possible or check current status
+    const currentAccount = getAccount(config);
+    if (currentAccount.address) {
+        account = currentAccount.address;
+        await loadProfiles();
+    } else {
+        // Try connecting automatically if it's a mini app
+        try {
+            await connect(config, { connector: config.connectors[0] });
+        } catch (e) {
+             console.log("Auto-connect skipped", e);
+        }
+    }
+  });
+
+  async function connectWallet() {
+      try {
+        await connect(config, { connector: config.connectors[0] });
+      } catch (error) {
+        console.error("Error connecting wallet:", error);
+      }
+  }
+
+  async function loadProfiles() {
+    if (!account) return;
+    
+    publicClient = getPublicClient(config);
+    if (!publicClient) return;
+
+    try {
+        // Assuming SkillerProfile is now Enumerable
+        const balance = await publicClient.readContract({
+          address: CONTRACT_ADDRESSES.SkillerProfile as Address,
+          abi: ABIS.SkillerProfile,
+          functionName: 'balanceOf',
+          args: [account]
+        });
+
+        const loadedProfiles = [];
+        
+        for (let i = 0n; i < balance; i++) {
+            const tokenId = await publicClient.readContract({
+                address: CONTRACT_ADDRESSES.SkillerProfile as Address,
+                abi: ABIS.SkillerProfile,
+                functionName: 'tokenOfOwnerByIndex',
+                args: [account, i]
+            });
+            
+            const profileData = await getProfileData(tokenId);
+            loadedProfiles.push(profileData);
+        }
+
+        profiles = loadedProfiles;
+    } catch (e) {
+        console.error("Error loading profiles:", e);
+        // Fallback for non-enumerable contract (if user hasn't redeployed yet)
+        // We could try checking userToProfile just in case
+    }
+  }
+
+  async function getProfileData(tokenId: bigint) {
+    const chainIdFromNetwork = await publicClient.getChainId();
+
+    const tbaAddress = await publicClient.readContract({
+        address: CONTRACT_ADDRESSES.ERC6551Registry as Address,
+        abi: ABIS.ERC6551Registry,
+        functionName: 'account',
+        args: [
+            CONTRACT_ADDRESSES.ERC6551Account as Address,
+            0n,
+            BigInt(chainIdFromNetwork),
+            CONTRACT_ADDRESSES.SkillerProfile as Address,
+            tokenId
+        ]
+    });
+
+    const axeBalance = await publicClient.readContract({
+        address: CONTRACT_ADDRESSES.SkillerItems as Address,
+        abi: ABIS.SkillerItems,
+        functionName: 'balanceOf',
+        args: [tbaAddress, 101n]
+    });
+
+    let profileImage = null;
+    try {
+        const uri = await publicClient.readContract({
+            address: CONTRACT_ADDRESSES.SkillerProfile as Address,
+            abi: ABIS.SkillerProfile,
+            functionName: 'tokenURI',
+            args: [tokenId]
+        });
+        
+        if (uri.startsWith("data:application/json;base64,")) {
+            const base64Json = uri.split(",")[1];
+            const jsonString = atob(base64Json);
+            const metadata = JSON.parse(jsonString);
+            profileImage = metadata.image;
+        }
+    } catch (e) {
+        console.error("Error fetching metadata:", e);
+    }
+
+    return {
+        id: tokenId,
+        image: profileImage,
+        tba: tbaAddress,
+        axeBalance
+    };
+  }
+
+  async function createProfile() {
+    if (!account) return;
+    loading = true;
+    try {
+        walletClient = await getWalletClient(config);
+        if (!walletClient) throw new Error("No wallet client");
+
+        const { request } = await publicClient.simulateContract({
+            account,
+            address: CONTRACT_ADDRESSES.SkillerProfile as Address,
+            abi: ABIS.SkillerProfile,
+            functionName: 'safeMint',
+            args: [account, "ipfs://new-profile"]
+        });
+        const hash = await walletClient.writeContract(request);
+        await publicClient.waitForTransactionReceipt({ hash });
+
+        await loadProfiles();
+    } catch (e) {
+        console.error(e);
+    } finally {
+        loading = false;
+    }
+  }
 </script>
 
-<main>
-	<h1>Greeter DApp</h1>
-
-	{#if !isConnected}
-		<div class="card">
-			<button onclick={connectWallet}>Connect Wallet</button>
-		</div>
-	{:else}
-		<div class="card">
-			<p class="status">Connected: <span class="address">{account}</span></p>
-		</div>
-		
-		<div class="card">
-			<h2>Current Greeting</h2>
-			<p class="greeting">{greeting}</p>
-            <button class="secondary" onclick={fetchGreeting}>Refresh</button>
-		</div>
-
-		<div class="card">
-			<h2>Update Greeting</h2>
-            <div class="input-group">
-			    <input bind:value={newGreeting} placeholder="New greeting" />
-			    <button onclick={updateGreeting}>Set Greeting</button>
-            </div>
-		</div>
-	{/if}
+<main class="container">
+  <h1>Skiller</h1>
+  <p>The MMORPG where your profile is a wallet.</p>
+  
+  {#if !account}
+    <button on:click={connectWallet}>Connect Wallet</button>
+  {:else}
+    <p>Connected: {account}</p>
     
-    {#if status}
-        <p class="status-message">
-            {status}
-            {#if txHash}
-                <a href="https://basescan.org/tx/{txHash}" target="_blank" rel="noopener noreferrer" class="tx-link">
-                    {txHash.substring(0, 6)}...{txHash.substring(txHash.length - 4)}
-                </a>
-            {/if}
-        </p>
+    {#if loading}
+        <p>Loading...</p>
+    {:else}
+        {#if profiles.length > 0}
+            <div class="profiles-grid">
+                {#each profiles as profile}
+                    <div class="profile-card">
+                        {#if profile.image}
+                            <img src={profile.image} alt="Profile NFT" class="nft-image" />
+                        {:else}
+                            <h2>Skiller #{profile.id}</h2>
+                            <p>Loading image...</p>
+                        {/if}
+
+                        <p class="tba-address"><strong>TBA:</strong> <br/> <code>{profile.tba}</code></p>
+                        <p>Axe Balance: {profile.axeBalance}</p>
+                    </div>
+                {/each}
+            </div>
+        {:else}
+             <p>You don't have any Skiller profiles yet.</p>
+        {/if}
+        
+        <div class="create-profile">
+            <button on:click={createProfile}>Mint New Character</button>
+        </div>
     {/if}
+  {/if}
 </main>
 
 <style>
-    :global(body) {
-        font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Oxygen-Sans, Ubuntu, Cantarell, "Helvetica Neue", sans-serif;
-        margin: 0;
-        padding: 0;
-        background-color: #f5f5f7;
-        color: #333;
-        display: flex;
-        justify-content: center;
-        min-height: 100vh;
-    }
-
-    main {
-        max-width: 600px;
-        width: 100%;
-        margin: 2rem;
-        display: flex;
-        flex-direction: column;
-        gap: 1.5rem;
-    }
-
-    h1 {
-        text-align: center;
-        color: #1a1a1a;
-        font-weight: 700;
-        margin-bottom: 1rem;
-    }
-
-    h2 {
-        margin-top: 0;
-        font-size: 1.2rem;
-        color: #666;
-        font-weight: 600;
-    }
-
-    .card {
-        background: white;
-        border-radius: 12px;
-        padding: 1.5rem;
-        box-shadow: 0 4px 6px rgba(0,0,0,0.05);
-        transition: transform 0.2s ease;
-    }
-
-    .card:hover {
-        transform: translateY(-2px);
-        box-shadow: 0 6px 12px rgba(0,0,0,0.08);
-    }
-
-    button {
-        background-color: #0052ff;
-        color: white;
-        border: none;
-        padding: 0.75rem 1.5rem;
-        border-radius: 8px;
-        font-weight: 600;
-        cursor: pointer;
-        transition: background-color 0.2s;
-        font-size: 1rem;
-    }
-
-    button:hover {
-        background-color: #0040cc;
-    }
-
-    button.secondary {
-        background-color: #f0f2f5;
-        color: #333;
-    }
-
-    button.secondary:hover {
-        background-color: #e4e6eb;
-    }
-
-    input {
-        padding: 0.75rem;
-        border: 1px solid #ddd;
-        border-radius: 8px;
-        font-size: 1rem;
-        width: 100%;
-        box-sizing: border-box;
-        transition: border-color 0.2s;
-    }
-
-    input:focus {
-        outline: none;
-        border-color: #0052ff;
-    }
-
-    .input-group {
-        display: flex;
-        gap: 0.5rem;
-    }
-    
-    .input-group input {
-        flex: 1;
-    }
-
-    .greeting {
-        font-size: 2rem;
-        font-weight: 800;
-        margin: 1rem 0;
-        color: #1a1a1a;
-        word-break: break-word;
-    }
-
-    .address {
-        font-family: "SF Mono", "Monaco", "Inconsolata", "Fira Mono", "Droid Sans Mono", "Source Code Pro", monospace;
-        background: #f0f2f5;
-        padding: 0.25rem 0.5rem;
-        border-radius: 4px;
-        font-size: 0.9rem;
-    }
-
-    .status {
-        margin: 0;
-        color: #666;
-    }
-
-    .status-message {
-        text-align: center;
-        color: #0052ff;
-        font-weight: 500;
-        margin-top: 1rem;
-        background: #e6f0ff;
-        padding: 0.75rem;
-        border-radius: 8px;
-    }
-
-    .tx-link {
-        color: #0052ff;
-        text-decoration: underline;
-        margin-left: 0.5rem;
-        font-family: "SF Mono", "Monaco", "Inconsolata", "Fira Mono", "Droid Sans Mono", "Source Code Pro", monospace;
-    }
-
-    .tx-link:hover {
-        color: #0040cc;
-    }
+  :global(body) {
+    background-color: #000000;
+    color: #ffffff;
+  }
+  .container {
+    max-width: 800px;
+    margin: 0 auto;
+    text-align: center;
+    padding: 2rem;
+    font-family: sans-serif;
+  }
+  .profiles-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+    gap: 2rem;
+    margin-bottom: 2rem;
+  }
+  .profile-card {
+    border: 1px solid #333;
+    padding: 2rem;
+    border-radius: 8px;
+    background: #111;
+    color: #fff;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+  }
+  .nft-image {
+    width: 100%;
+    max-width: 350px;
+    border-radius: 8px;
+    margin-bottom: 1rem;
+    border: 2px solid #444;
+    background: black;
+  }
+  code {
+    background: #222;
+    padding: 0.2rem 0.5rem;
+    border-radius: 4px;
+    word-break: break-all;
+    font-size: 0.9rem;
+    color: #ddd;
+    border: 1px solid #333;
+  }
+  button {
+    padding: 0.8rem 1.5rem;
+    font-size: 1rem;
+    cursor: pointer;
+    background: #ff3e00;
+    color: white;
+    border: none;
+    border-radius: 4px;
+  }
+  button:hover {
+    background: #e63800;
+  }
+  .tba-address {
+    margin-top: 1rem;
+    font-size: 0.9rem;
+  }
+  .create-profile {
+    margin-top: 2rem;
+  }
 </style>
-
