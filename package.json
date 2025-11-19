@@ -1,0 +1,14 @@
+{
+  "name": "woodgame-monorepo",
+  "version": "1.0.0",
+  "private": true,
+  "workspaces": [
+    "packages/*"
+  ],
+  "scripts": {
+    "deploy:contract": "npm run deploy -w packages/contract",
+    "dev:frontend": "npm run dev -w packages/frontend",
+    "sync:abi": "node scripts/sync-abi.js"
+  }
+}
+
