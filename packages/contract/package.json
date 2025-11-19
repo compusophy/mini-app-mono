@@ -3,7 +3,7 @@
   "version": "1.0.0",
   "scripts": {
     "compile": "hardhat compile",
-    "deploy": "hardhat run scripts/deploy.ts --network base-mainnet"
+    "deploy": "hardhat run scripts/deploy-skiller.ts --network base-mainnet"
   },
   "devDependencies": {
     "@nomicfoundation/hardhat-toolbox": "^5.0.0",
@@ -16,5 +16,8 @@
     "hardhat": "^2.22.0",
     "ts-node": "^10.0.0",
     "typescript": "^5.0.0"
+  },
+  "dependencies": {
+    "@openzeppelin/contracts": "^5.4.0"
   }
 }

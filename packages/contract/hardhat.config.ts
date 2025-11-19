@@ -47,12 +47,22 @@ if (!process.env.PRIVATE_KEY) {
 }
 
 const config: HardhatUserConfig = {
-  solidity: "0.8.24",
+  solidity: {
+    version: "0.8.27",
+    settings: {
+      evmVersion: "cancun",
+      optimizer: {
+        enabled: true,
+        runs: 200,
+      },
+    },
+  },
   networks: {
     "base-mainnet": {
       url: "https://mainnet.base.org",
       accounts: process.env.PRIVATE_KEY ? [process.env.PRIVATE_KEY] : [],
       chainId: 8453,
+      gasPrice: 40000000, // Increase to 0.04 gwei to beat stuck txs
     },
   },
 };
