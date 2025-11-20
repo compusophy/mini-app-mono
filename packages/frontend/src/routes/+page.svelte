@@ -12,6 +12,7 @@
   let account: Address | null = null;
   let profiles: Array<{ id: bigint, image: string, tba: Address, axeBalance: bigint, woodBalance: bigint }> = [];
   let loading = false;
+  let isLoadingProfiles = false;
   let errorMsg: string | null = null;
   let chopping = false;
 
@@ -87,6 +88,8 @@
         return;
     }
 
+    isLoadingProfiles = true;
+
     try {
         console.log("Loading profiles for account:", account);
         const balance = await publicClient.readContract({
@@ -118,6 +121,8 @@
     } catch (e) {
         console.error("Error loading profiles:", e);
         errorMsg = `Failed to load profiles: ${e instanceof Error ? e.message : String(e)}`;
+    } finally {
+        isLoadingProfiles = false;
     }
   }
 
@@ -270,8 +275,11 @@
   {:else}
     <p>Connected: {account}</p>
     
-    {#if loading}
-        <p>Loading...</p>
+    {#if isLoadingProfiles}
+        <div class="loading-interstitial">
+            <div class="spinner"></div>
+            <p>Loading your characters...</p>
+        </div>
     {:else}
         {#if profiles.length > 0}
             <div class="profiles-grid">
@@ -303,7 +311,9 @@
         {/if}
         
         <div class="create-profile">
-            <button on:click={createProfile}>Mint New Character</button>
+            <button on:click={createProfile} disabled={loading}>
+                {loading ? 'Minting...' : 'Mint New Character'}
+            </button>
         </div>
         {#if errorMsg}
             <p class="error">{errorMsg}</p>
@@ -412,5 +422,26 @@
     background: rgba(255, 62, 0, 0.1);
     padding: 1rem;
     border-radius: 8px;
+  }
+  .loading-interstitial {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    padding: 4rem 0;
+    color: #888;
+  }
+  .spinner {
+    width: 40px;
+    height: 40px;
+    border: 4px solid #333;
+    border-top: 4px solid #ff3e00;
+    border-radius: 50%;
+    animation: spin 1s linear infinite;
+    margin-bottom: 1rem;
+  }
+  @keyframes spin {
+    0% { transform: rotate(0deg); }
+    100% { transform: rotate(360deg); }
   }
 </style>
