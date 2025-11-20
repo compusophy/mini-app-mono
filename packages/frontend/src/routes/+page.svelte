@@ -10,9 +10,10 @@
   const CONTRACT_ADDRESSES = addresses;
 
   let account: Address | null = null;
-  let profiles: Array<{ id: bigint, image: string, tba: Address, axeBalance: bigint }> = [];
+  let profiles: Array<{ id: bigint, image: string, tba: Address, axeBalance: bigint, woodBalance: bigint }> = [];
   let loading = false;
   let errorMsg: string | null = null;
+  let chopping = false;
 
   onMount(async () => {
     try {
@@ -137,12 +138,19 @@
     });
 
     let axeBalance = 0n;
+    let woodBalance = 0n;
     try {
         axeBalance = await publicClient.readContract({
             address: CONTRACT_ADDRESSES.SkillerItems as Address,
             abi: ABIS.SkillerItems,
             functionName: 'balanceOf',
             args: [tbaAddress, 101n]
+        });
+        woodBalance = await publicClient.readContract({
+            address: CONTRACT_ADDRESSES.SkillerItems as Address,
+            abi: ABIS.SkillerItems,
+            functionName: 'balanceOf',
+            args: [tbaAddress, 201n]
         });
     } catch (e) {
         console.error("Error reading items:", e);
@@ -171,8 +179,45 @@
         id: tokenId,
         image: profileImage,
         tba: tbaAddress,
-        axeBalance
+        axeBalance,
+        woodBalance
     };
+  }
+
+  async function chopTree(tokenId: bigint) {
+    if (!account || chopping) return;
+    chopping = true;
+    errorMsg = null;
+    try {
+        const walletClient = await getWalletClient(config);
+        const publicClient = getPublicClient(config);
+        
+        if (!walletClient || !publicClient) throw new Error("No wallet/public client");
+
+        console.log("Chopping tree with profile:", tokenId.toString());
+
+        // Using SkillerChopping contract
+        const { request } = await publicClient.simulateContract({
+            account,
+            address: CONTRACT_ADDRESSES.SkillerChopping as Address,
+            abi: ABIS.SkillerChopping,
+            functionName: 'chopTree',
+            args: [tokenId]
+        });
+        const hash = await walletClient.writeContract(request);
+        console.log("Chop tx sent:", hash);
+        await publicClient.waitForTransactionReceipt({ hash });
+        console.log("Chop tx confirmed:", hash);
+        
+        // Wait a moment for state to update
+        await new Promise(resolve => setTimeout(resolve, 2000));
+        await loadProfiles();
+    } catch (e: any) {
+        console.error("Error chopping tree:", e);
+        errorMsg = e.message || "Failed to chop tree";
+    } finally {
+        chopping = false;
+    }
   }
 
   async function createProfile() {
@@ -190,7 +235,7 @@
             address: CONTRACT_ADDRESSES.SkillerProfile as Address,
             abi: ABIS.SkillerProfile,
             functionName: 'safeMint',
-            args: [account, "ipfs://new-profile"]
+            args: [account]
         });
         const hash = await walletClient.writeContract(request);
         const receipt = await publicClient.waitForTransactionReceipt({ hash });
@@ -240,7 +285,16 @@
                         {/if}
 
                         <p class="tba-address"><strong>TBA:</strong> <br/> <code>{profile.tba}</code></p>
-                        <p>Axe Balance: {profile.axeBalance}</p>
+                        <div class="inventory">
+                            <p>🪓 Axes: {profile.axeBalance}</p>
+                            <p>🪵 Wood: {profile.woodBalance}</p>
+                        </div>
+                        
+                        <div class="actions">
+                            <button class="secondary" on:click={() => chopTree(profile.id)} disabled={chopping}>
+                                {chopping ? 'Chopping...' : 'Chop Tree'}
+                            </button>
+                        </div>
                     </div>
                 {/each}
             </div>
@@ -262,68 +316,101 @@
   :global(body) {
     background-color: #000000;
     color: #ffffff;
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
   }
   .container {
-    max-width: 800px;
+    max-width: 100%;
     margin: 0 auto;
     text-align: center;
-    padding: 2rem;
-    font-family: sans-serif;
+    padding: 1rem;
+    box-sizing: border-box;
+  }
+  h1 {
+    font-size: 2rem;
+    margin-bottom: 0.5rem;
   }
   .profiles-grid {
-    display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
-    gap: 2rem;
+    display: flex;
+    flex-direction: column;
+    gap: 1.5rem;
     margin-bottom: 2rem;
+    width: 100%;
+  }
+  @media (min-width: 600px) {
+    .profiles-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+    }
   }
   .profile-card {
     border: 1px solid #333;
-    padding: 2rem;
-    border-radius: 8px;
+    padding: 1.5rem;
+    border-radius: 12px;
     background: #111;
     color: #fff;
     display: flex;
     flex-direction: column;
     align-items: center;
+    box-shadow: 0 4px 6px rgba(0,0,0,0.3);
   }
   .nft-image {
     width: 100%;
-    max-width: 350px;
+    max-width: 280px;
+    aspect-ratio: 1;
     border-radius: 8px;
     margin-bottom: 1rem;
     border: 2px solid #444;
     background: black;
+    object-fit: cover;
   }
   code {
     background: #222;
-    padding: 0.2rem 0.5rem;
-    border-radius: 4px;
+    padding: 0.4rem 0.6rem;
+    border-radius: 6px;
     word-break: break-all;
-    font-size: 0.9rem;
-    color: #ddd;
+    font-size: 0.8rem;
+    color: #aaa;
     border: 1px solid #333;
+    display: block;
+    margin-top: 0.5rem;
   }
   button {
     padding: 0.8rem 1.5rem;
     font-size: 1rem;
+    font-weight: 600;
     cursor: pointer;
     background: #ff3e00;
     color: white;
     border: none;
-    border-radius: 4px;
+    border-radius: 8px;
+    width: 100%;
+    max-width: 300px;
+    transition: background 0.2s;
   }
   button:hover {
     background: #e63800;
   }
+  button.secondary {
+    background: #333;
+    margin-top: 1rem;
+  }
+  button.secondary:hover {
+    background: #444;
+  }
   .tba-address {
     margin-top: 1rem;
     font-size: 0.9rem;
+    width: 100%;
   }
   .create-profile {
     margin-top: 2rem;
+    margin-bottom: 4rem;
   }
   .error {
     color: #ff3e00;
     margin-top: 1rem;
+    background: rgba(255, 62, 0, 0.1);
+    padding: 1rem;
+    border-radius: 8px;
   }
 </style>

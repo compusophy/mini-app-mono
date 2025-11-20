@@ -14,8 +14,20 @@ contract SkillerItems is ERC1155, Ownable {
         _setURI(newuri);
     }
 
+    mapping(address => bool) public minters;
+
+    modifier onlyMinter() {
+        require(minters[msg.sender] || msg.sender == owner(), "Not a minter");
+        _;
+    }
+
+    function setMinter(address minter, bool status) public onlyOwner {
+        minters[minter] = status;
+    }
+
     function mint(address account, uint256 id, uint256 amount, bytes memory data)
         public
+        onlyMinter
     {
         _mint(account, id, amount, data);
     }

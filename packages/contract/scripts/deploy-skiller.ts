@@ -63,19 +63,38 @@ async function main() {
   console.log("   ✓ SkillerItems deployed to:", items.target);
   await waitForNonceSync(3000);
 
-  // 5. Configure SkillerProfile
+  // 5. Deploy Descriptor
   await waitForNonceSync();
-  console.log("5. Configuring SkillerProfile...");
-  const configTx = await profile.setConfig(items.target, registry.target, accountImpl.target);
+  console.log("5. Deploying SkillerDescriptor...");
+  const Descriptor = await ethers.getContractFactory("SkillerDescriptor");
+  const descriptor = await Descriptor.deploy();
+  await descriptor.waitForDeployment();
+  console.log("   ✓ SkillerDescriptor deployed to:", descriptor.target);
+  await waitForNonceSync(3000);
+
+  // 6. Configure SkillerProfile
+  await waitForNonceSync();
+  console.log("6. Configuring SkillerProfile...");
+  const configTx = await profile.setConfig(items.target, registry.target, accountImpl.target, descriptor.target);
   await configTx.wait();
   console.log("   ✓ SkillerProfile configured");
+  await waitForNonceSync(2000);
+
+  // 7. Grant Minter Role to SkillerProfile
+  await waitForNonceSync();
+  console.log("7. Granting Minter Role to SkillerProfile...");
+  const minterTx = await items.setMinter(profile.target, true);
+  await minterTx.wait();
+  console.log("   ✓ SkillerProfile granted minter role");
+  await waitForNonceSync(2000);
 
   // Output for frontend config
   const addresses = {
     ERC6551Registry: registry.target,
     ERC6551Account: accountImpl.target,
     SkillerProfile: profile.target,
-    SkillerItems: items.target
+    SkillerItems: items.target,
+    SkillerDescriptor: descriptor.target
   };
   
   console.log("\n--- Frontend Config ---");
