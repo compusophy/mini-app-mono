@@ -14,7 +14,7 @@
   let loading = false;
   let isLoadingProfiles = false;
   let errorMsg: string | null = null;
-  let chopping = false;
+  let choppingProfileId: bigint | null = null;
 
   onMount(async () => {
     try {
@@ -76,7 +76,7 @@
       }
   }
 
-  async function loadProfiles() {
+  async function loadProfiles(silent = false) {
     if (!account) {
         console.log("No account, skipping loadProfiles");
         return;
@@ -88,7 +88,7 @@
         return;
     }
 
-    isLoadingProfiles = true;
+    if (!silent) isLoadingProfiles = true;
 
     try {
         console.log("Loading profiles for account:", account);
@@ -122,7 +122,7 @@
         console.error("Error loading profiles:", e);
         errorMsg = `Failed to load profiles: ${e instanceof Error ? e.message : String(e)}`;
     } finally {
-        isLoadingProfiles = false;
+        if (!silent) isLoadingProfiles = false;
     }
   }
 
@@ -190,8 +190,8 @@
   }
 
   async function chopTree(tokenId: bigint) {
-    if (!account || chopping) return;
-    chopping = true;
+    if (!account || choppingProfileId !== null) return;
+    choppingProfileId = tokenId;
     errorMsg = null;
     try {
         const walletClient = await getWalletClient(config);
@@ -216,12 +216,12 @@
         
         // Wait a moment for state to update
         await new Promise(resolve => setTimeout(resolve, 2000));
-        await loadProfiles();
+        await loadProfiles(true);
     } catch (e: any) {
         console.error("Error chopping tree:", e);
         errorMsg = e.message || "Failed to chop tree";
     } finally {
-        chopping = false;
+        choppingProfileId = null;
     }
   }
 
@@ -251,7 +251,7 @@
         await new Promise(resolve => setTimeout(resolve, 2000));
         
         // Reload profiles
-        await loadProfiles();
+        await loadProfiles(true);
         
         console.log("Profiles loaded:", profiles.length);
     } catch (e: any) {
@@ -299,8 +299,17 @@
                         </div>
                         
                         <div class="actions">
-                            <button class="secondary" on:click={() => chopTree(profile.id)} disabled={chopping}>
-                                {chopping ? 'Chopping...' : 'Chop Tree'}
+                            <button 
+                                class="secondary chopping-btn" 
+                                class:active={choppingProfileId === profile.id}
+                                on:click={() => chopTree(profile.id)} 
+                                disabled={choppingProfileId !== null}
+                            >
+                                {#if choppingProfileId === profile.id}
+                                    <span class="axe-anim">🪓</span> Chopping...
+                                {:else}
+                                    Chop Tree
+                                {/if}
                             </button>
                         </div>
                     </div>
@@ -443,5 +452,22 @@
   @keyframes spin {
     0% { transform: rotate(0deg); }
     100% { transform: rotate(360deg); }
+  }
+  @keyframes chop {
+    0% { transform: rotate(0deg); }
+    50% { transform: rotate(-45deg); }
+    100% { transform: rotate(0deg); }
+  }
+  .axe-anim {
+    display: inline-block;
+    animation: chop 0.4s ease-in-out infinite;
+    margin-right: 0.5rem;
+    transform-origin: bottom left;
+  }
+  .chopping-btn.active {
+    background: #555;
+    cursor: not-allowed;
+    border-color: #666;
+    color: #ddd;
   }
 </style>
