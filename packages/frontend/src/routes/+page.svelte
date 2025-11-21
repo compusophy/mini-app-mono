@@ -7,7 +7,7 @@
   import type { Address } from 'viem';
   import { ABIS } from '$lib/abis';
   import addresses from '$lib/addresses.json';
-  import { Backpack, User, Axe, Pickaxe, Coins, TreeDeciduous, Mountain, ArrowLeft, BarChart3 } from '@lucide/svelte';
+  import { Backpack, User, Axe, Pickaxe, Coins, TreeDeciduous, Mountain, ArrowLeft, BarChart3, Trophy } from '@lucide/svelte';
 
   const CONTRACT_ADDRESSES = addresses;
 
@@ -38,6 +38,10 @@
   let showInventory = false;
   let showProfile = false;
   let showSkills = false;
+  let showLeaderboard = false;
+  let leaderboardProfiles: Profile[] = [];
+  let isLoadingLeaderboard = false;
+  let leaderboardTab: 'overall' | 'woodcutting' | 'mining' = 'overall';
   let errorMsg: string | null = null;
   type Toast = {
     id: number;
@@ -144,6 +148,124 @@
         errorMsg = error.message || "Failed to connect wallet.";
       }
   }
+
+  async function loadLeaderboard() {
+    if (isLoadingLeaderboard) return;
+    isLoadingLeaderboard = true;
+    const publicClient = getPublicClient(config);
+    if (!publicClient) {
+        isLoadingLeaderboard = false;
+        return;
+    }
+    
+    if (!CONTRACT_ADDRESSES.SkillerProfile || !CONTRACT_ADDRESSES.SkillerMining || !CONTRACT_ADDRESSES.SkillerChopping) {
+        isLoadingLeaderboard = false;
+        return;
+    }
+
+    try {
+        const total = await publicClient.readContract({
+            address: CONTRACT_ADDRESSES.SkillerProfile as Address,
+            abi: ABIS.SkillerProfile,
+            functionName: 'totalSupply',
+        });
+
+        // 1. Get all Token IDs
+        const tokenByIndexCalls = [];
+        for (let i = 0n; i < total; i++) {
+            tokenByIndexCalls.push({
+                address: CONTRACT_ADDRESSES.SkillerProfile as Address,
+                abi: ABIS.SkillerProfile,
+                functionName: 'tokenByIndex',
+                args: [i]
+            });
+        }
+        
+        const tokenIdsResults = await publicClient.multicall({ contracts: tokenByIndexCalls });
+        const tokenIds = tokenIdsResults.map(r => r.result as bigint);
+
+        // 2. Prepare calls for data
+        const miningLevelCalls = tokenIds.map(id => ({
+            address: CONTRACT_ADDRESSES.SkillerMining as Address,
+            abi: ABIS.SkillerMining,
+            functionName: 'getLevel',
+            args: [id]
+        }));
+        
+        const miningXpCalls = tokenIds.map(id => ({
+            address: CONTRACT_ADDRESSES.SkillerMining as Address,
+            abi: ABIS.SkillerMining,
+            functionName: 'profileXp',
+            args: [id]
+        }));
+
+        const woodLevelCalls = tokenIds.map(id => ({
+            address: CONTRACT_ADDRESSES.SkillerChopping as Address,
+            abi: ABIS.SkillerChopping,
+            functionName: 'getLevel',
+            args: [id]
+        }));
+
+        const woodXpCalls = tokenIds.map(id => ({
+            address: CONTRACT_ADDRESSES.SkillerChopping as Address,
+            abi: ABIS.SkillerChopping,
+            functionName: 'profileXp',
+            args: [id]
+        }));
+        
+        const [mLevels, mXps, wLevels, wXps] = await Promise.all([
+            publicClient.multicall({ contracts: miningLevelCalls }),
+            publicClient.multicall({ contracts: miningXpCalls }),
+            publicClient.multicall({ contracts: woodLevelCalls }),
+            publicClient.multicall({ contracts: woodXpCalls })
+        ]);
+
+        // 3. Map to Profile objects
+        leaderboardProfiles = tokenIds.map((id, index) => {
+            return {
+                id: id,
+                image: '',
+                tba: '0x0000000000000000000000000000000000000000', // Placeholder
+                axeBalance: 0n,
+                woodBalance: 0n,
+                pickaxeBalance: 0n,
+                oreBalance: 0n,
+                goldBalance: 0n,
+                miningLevel: mLevels[index].status === 'success' ? mLevels[index].result as bigint : 1n,
+                miningXp: mXps[index].status === 'success' ? mXps[index].result as bigint : 0n,
+                woodcuttingLevel: wLevels[index].status === 'success' ? wLevels[index].result as bigint : 1n,
+                woodcuttingXp: wXps[index].status === 'success' ? wXps[index].result as bigint : 0n,
+            };
+        });
+        
+    } catch(e) {
+        console.error("Error loading leaderboard:", e);
+    } finally {
+        isLoadingLeaderboard = false;
+    }
+  }
+
+  $: if (showLeaderboard) {
+      loadLeaderboard();
+  }
+
+  $: sortedLeaderboard = [...leaderboardProfiles].sort((a, b) => {
+      if (leaderboardTab === 'overall') {
+          const totalLevelA = (a.miningLevel || 0n) + (a.woodcuttingLevel || 0n);
+          const totalLevelB = (b.miningLevel || 0n) + (b.woodcuttingLevel || 0n);
+          if (totalLevelA !== totalLevelB) {
+              return Number(totalLevelB - totalLevelA);
+          }
+          // Tie-breaker: Total XP
+          const totalXpA = (a.miningXp || 0n) + (a.woodcuttingXp || 0n);
+          const totalXpB = (b.miningXp || 0n) + (b.woodcuttingXp || 0n);
+          return Number(totalXpB - totalXpA);
+      } else if (leaderboardTab === 'woodcutting') {
+          return Number((b.woodcuttingXp || 0n) - (a.woodcuttingXp || 0n));
+      } else {
+          return Number((b.miningXp || 0n) - (a.miningXp || 0n));
+      }
+  }).slice(0, 10);
 
   async function loadProfiles(silent = false) {
     if (!account) return;
@@ -360,6 +482,7 @@
         
         const prevXp = action === 'chop' ? selectedProfile?.woodcuttingXp : selectedProfile?.miningXp;
         await loadProfiles(true);
+        leaderboardProfiles = []; // Force refresh of leaderboard to reflect new stats
         
         if (selectedProfileId) {
             const updatedProfile = profiles.find(p => p.id === selectedProfileId);
@@ -413,7 +536,8 @@
         
         await new Promise(r => setTimeout(r, 2000));
         await loadProfiles(true);
-        showToast('Profile Minted!');
+        leaderboardProfiles = []; // Force refresh of leaderboard
+        showToast('Character Created!');
     } catch (e: any) {
         console.error("Error creating profile:", e);
         if (e.message?.includes("User rejected") || e.message?.includes("User denied")) {
@@ -461,6 +585,58 @@
             {/if}
         </div>
     </header>
+
+    {#if showLeaderboard}
+        <div class="modal-backdrop" on:click={() => showLeaderboard = false}>
+            <div class="modal-content leaderboard-modal" on:click|stopPropagation>
+                <div class="leaderboard-tabs">
+                    <button class="tab-btn" class:active={leaderboardTab === 'overall'} on:click={() => leaderboardTab = 'overall'}>
+                        Total
+                    </button>
+                    <button class="tab-btn" class:active={leaderboardTab === 'woodcutting'} on:click={() => leaderboardTab = 'woodcutting'}>
+                        <TreeDeciduous size={18} color="#4ade80" />
+                    </button>
+                    <button class="tab-btn" class:active={leaderboardTab === 'mining'} on:click={() => leaderboardTab = 'mining'}>
+                        <Mountain size={18} color="#5d4037" />
+                    </button>
+                </div>
+                
+                <div class="leaderboard-list">
+                    {#if isLoadingLeaderboard && leaderboardProfiles.length === 0}
+                        <div class="loading-container">
+                            <div class="spinner-small"></div>
+                        </div>
+                    {:else}
+                        <div class="leaderboard-header-row">
+                            <span class="col-rank">#</span>
+                            <span class="col-player">Player</span>
+                            <span class="col-lvl">Lvl</span>
+                        </div>
+                        <div class="leaderboard-scroll">
+                            {#each sortedLeaderboard as profile, i}
+                                <div class="leaderboard-row" class:self={selectedProfile && profile.id === selectedProfile.id}>
+                                    <span class="col-rank">{i + 1}</span>
+                                    <span class="col-player">SKILLER #{profile.id}</span>
+                                    <span class="col-lvl">
+                                        {#if leaderboardTab === 'overall'}
+                                            {(profile.miningLevel || 0n) + (profile.woodcuttingLevel || 0n)}
+                                        {:else if leaderboardTab === 'woodcutting'}
+                                            {profile.woodcuttingLevel}
+                                        {:else}
+                                            {profile.miningLevel}
+                                        {/if}
+                                    </span>
+                                </div>
+                            {/each}
+                             {#if sortedLeaderboard.length === 0}
+                                <div class="empty-state">No profiles found</div>
+                            {/if}
+                        </div>
+                    {/if}
+                </div>
+            </div>
+        </div>
+    {/if}
 
     {#if showInventory && selectedProfile}
         <div class="modal-backdrop" on:click={() => showInventory = false}>
@@ -667,7 +843,11 @@
                 </button>
             {/if}
         {:else}
-            <div class="footer-left"></div>
+            <div class="footer-left">
+                <button class="square-btn" on:click={() => showLeaderboard = !showLeaderboard}>
+                    <Trophy size={24} />
+                </button>
+            </div>
             <div class="footer-center">
                 <button class="square-btn" on:click={() => showSkills = !showSkills}>
                     <BarChart3 size={24} />
@@ -824,6 +1004,128 @@
     .inventory-modal {
         bottom: 90px; /* Above the footer */
         right: 20px;
+    }
+
+    .leaderboard-modal {
+        bottom: 90px;
+        left: 20px;
+        width: 280px;
+        padding: 0;
+        display: flex;
+        flex-direction: column;
+        overflow: hidden;
+        max-height: 500px;
+    }
+
+    .leaderboard-tabs {
+        display: flex;
+        background: #252525;
+        border-bottom: 1px solid #333;
+    }
+
+    .tab-btn {
+        flex: 1;
+        background: transparent;
+        border: none;
+        color: #888;
+        padding: 12px;
+        cursor: pointer;
+        display: flex;
+        justify-content: center;
+        align-items: center;
+        transition: all 0.2s;
+        border-bottom: 2px solid transparent;
+        font-weight: bold;
+        font-size: 0.9rem;
+    }
+
+    .tab-btn:hover {
+        color: #aaa;
+        background: #2a2a2a;
+    }
+
+    .tab-btn.active {
+        color: white;
+        border-bottom-color: #2563eb;
+        background: #2a2a2a;
+    }
+
+    .leaderboard-list {
+        padding: 0.5rem;
+        display: flex;
+        flex-direction: column;
+        flex: 1;
+        overflow: hidden;
+    }
+    
+    .loading-container {
+        display: flex;
+        justify-content: center;
+        padding: 2rem;
+    }
+
+    .leaderboard-header-row {
+        display: flex;
+        padding: 0.5rem;
+        font-size: 0.75rem;
+        color: #888;
+        text-transform: uppercase;
+        border-bottom: 1px solid #333;
+        margin-bottom: 0.25rem;
+    }
+
+    .leaderboard-scroll {
+        overflow-y: auto;
+        flex: 1;
+    }
+
+    .leaderboard-row {
+        display: flex;
+        padding: 0.5rem;
+        font-size: 0.9rem;
+        border-radius: 8px;
+        color: #ccc;
+        align-items: center;
+    }
+    
+    .leaderboard-row:nth-child(even) {
+        background: rgba(255,255,255,0.03);
+    }
+    
+    .leaderboard-row.self {
+        background: rgba(37, 99, 235, 0.2);
+        color: white;
+        border: 1px solid rgba(37, 99, 235, 0.4);
+    }
+
+    .col-rank {
+        width: 30px;
+        text-align: center;
+        font-weight: bold;
+        color: #666;
+    }
+    
+    .leaderboard-row .col-rank {
+        color: #888;
+    }
+    
+    .leaderboard-row:nth-child(1) .col-rank { color: #fbbf24; } /* Gold */
+    .leaderboard-row:nth-child(2) .col-rank { color: #9ca3af; } /* Silver */
+    .leaderboard-row:nth-child(3) .col-rank { color: #b45309; } /* Bronze */
+
+    .col-player {
+        flex: 1;
+        padding-left: 0.5rem;
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+    }
+
+    .col-lvl {
+        width: 40px;
+        text-align: right;
+        font-weight: bold;
+        color: white;
     }
 
     .profile-modal {
