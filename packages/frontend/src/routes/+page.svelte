@@ -1,5 +1,6 @@
 <script lang="ts">
   import { onMount } from 'svelte';
+  import { flip } from 'svelte/animate';
   import { sdk } from '@farcaster/miniapp-sdk';
   import { config } from '$lib/wagmi';
   import { connect, getAccount, watchAccount, getWalletClient, getPublicClient } from '@wagmi/core';
@@ -9,89 +10,146 @@
 
   const CONTRACT_ADDRESSES = addresses;
 
+  // Types
+  type Profile = {
+    id: bigint;
+    image: string;
+    tba: Address;
+    axeBalance: bigint;
+    woodBalance: bigint;
+    pickaxeBalance: bigint;
+    oreBalance: bigint;
+    goldBalance: bigint;
+    miningLevel: bigint;
+    miningXp: bigint;
+    woodcuttingLevel: bigint;
+    woodcuttingXp: bigint;
+  };
+
+  // State
   let account: Address | null = null;
-  let profiles: Array<{ id: bigint, image: string, tba: Address, axeBalance: bigint, woodBalance: bigint }> = [];
-  let loading = false;
+  let profiles: Profile[] = [];
+  let selectedProfileId: bigint | null = null;
+  
+  let loading = false; // For minting
   let isLoadingProfiles = false;
+  let isInitializing = true;
+  let showInventory = false;
   let errorMsg: string | null = null;
-  let choppingProfileId: bigint | null = null;
+  type Toast = {
+    id: number;
+    msg: string;
+    type: 'default' | 'woodcutting-xp' | 'mining-xp' | 'inventory' | 'error';
+  };
+  let toasts: Toast[] = [];
+  let toastIdCounter = 0;
+  
+  let actionLoading: string | null = null; // 'chop', 'mine', 'claim'
+
+  // Derived
+  $: selectedProfile = selectedProfileId !== null ? profiles.find(p => p.id === selectedProfileId) : null;
+
+  // Helper: XP Calculation
+  // Level = 1 + sqrt(xp / 100)
+  // Next Level XP = 100 * (CurrentLevel)^2
+  function getNextLevelXp(level: bigint): bigint {
+    return 100n * (level * level);
+  }
+
+  function truncateAddress(addr: string) {
+    if (!addr) return '';
+    return `${addr.slice(0, 6)}...${addr.slice(-4)}`;
+  }
+
+  async function copyToClipboard(text: string) {
+    try {
+      await navigator.clipboard.writeText(text);
+      showToast('Address copied!');
+    } catch (err) {
+      console.error('Failed to copy:', err);
+    }
+  }
+
+  function showToast(msg: string, type: Toast['type'] = 'default') {
+      const id = toastIdCounter++;
+      toasts = [...toasts, { id, msg, type }];
+      setTimeout(() => {
+          toasts = toasts.filter(t => t.id !== id);
+      }, 3000);
+  }
 
   onMount(async () => {
+    let isMounted = true;
+    
     try {
+        // This MUST be called for the mini app to work correctly
         await sdk.actions.ready();
     } catch (e) {
-        // Not in Mini App, that's okay
-        console.log("Not in Mini App environment");
+        console.log("Not in Mini App environment or SDK error:", e);
     }
 
     watchAccount(config, {
         onChange(data) {
+            if (!isMounted) return;
+            const prevAccount = account;
             account = data.address ?? null;
-            if (account) {
+            if (account && account !== prevAccount) {
                 loadProfiles();
             }
         }
     });
 
-    // Check if we're in a Mini App before trying to connect
+    // Mini App Auto-Connect logic
     try {
         const isMiniApp = await sdk.isInMiniApp();
-        
-        if (isMiniApp) {
-            // Auto-connect if possible
+        if (isMiniApp && isMounted) {
             const currentAccount = getAccount(config);
             if (currentAccount.address) {
                 account = currentAccount.address;
                 await loadProfiles();
             } else {
-                // Try connecting automatically if it's a mini app
                 try {
                     await connect(config, { connector: config.connectors[0] });
                 } catch (e) {
-                    // Silently fail - user can manually connect
-                    console.log("Auto-connect skipped");
+                    console.log("Auto-connect skipped:", e);
                 }
             }
         }
     } catch (e) {
-        // Not in Mini App or SDK not available
-        console.log("Mini App check failed, skipping auto-connect");
+        console.log("Mini App check failed:", e);
+    } finally {
+        isInitializing = false;
     }
+    
+    return () => {
+        isMounted = false;
+    };
   });
 
   async function connectWallet() {
       errorMsg = null;
       try {
-        // Check if we're in a Mini App first
         const isMiniApp = await sdk.isInMiniApp();
         if (!isMiniApp) {
-          errorMsg = "Please open this app in a Farcaster client to connect your wallet";
-          return;
+            // Allow connecting outside miniapp for dev testing if needed, but warn
+             await connect(config, { connector: config.connectors[0] });
+             return;
         }
-        
         await connect(config, { connector: config.connectors[0] });
       } catch (error: any) {
         console.error("Error connecting wallet:", error);
-        errorMsg = error.message || "Failed to connect wallet. Make sure you're in a Farcaster Mini App.";
+        errorMsg = error.message || "Failed to connect wallet.";
       }
   }
 
   async function loadProfiles(silent = false) {
-    if (!account) {
-        console.log("No account, skipping loadProfiles");
-        return;
-    }
-    
+    if (!account) return;
     const publicClient = getPublicClient(config);
-    if (!publicClient) {
-        console.log("No public client, skipping loadProfiles");
-        return;
-    }
+    if (!publicClient) return;
 
     if (!silent) isLoadingProfiles = true;
 
     try {
-        console.log("Loading profiles for account:", account);
         const balance = await publicClient.readContract({
           address: CONTRACT_ADDRESSES.SkillerProfile as Address,
           abi: ABIS.SkillerProfile,
@@ -99,9 +157,7 @@
           args: [account]
         });
 
-        console.log("Profile balance:", balance.toString());
-
-        const loadedProfiles = [];
+        const loadedProfiles: Profile[] = [];
         
         for (let i = 0n; i < balance; i++) {
             const tokenId = await publicClient.readContract({
@@ -111,13 +167,11 @@
                 args: [account, i]
             });
             
-            console.log(`Loading profile #${tokenId.toString()}`);
             const profileData = await getProfileData(tokenId, publicClient);
             loadedProfiles.push(profileData);
         }
 
         profiles = loadedProfiles;
-        console.log(`Loaded ${profiles.length} profiles`);
     } catch (e) {
         console.error("Error loading profiles:", e);
         errorMsg = `Failed to load profiles: ${e instanceof Error ? e.message : String(e)}`;
@@ -126,7 +180,7 @@
     }
   }
 
-  async function getProfileData(tokenId: bigint, publicClient: any) {
+  async function getProfileData(tokenId: bigint, publicClient: any): Promise<Profile> {
     const chainIdFromNetwork = await publicClient.getChainId();
 
     const tbaAddress = await publicClient.readContract({
@@ -144,84 +198,193 @@
 
     let axeBalance = 0n;
     let woodBalance = 0n;
-    try {
-        axeBalance = await publicClient.readContract({
-            address: CONTRACT_ADDRESSES.SkillerItems as Address,
-            abi: ABIS.SkillerItems,
-            functionName: 'balanceOf',
-            args: [tbaAddress, 101n]
-        });
-        woodBalance = await publicClient.readContract({
-            address: CONTRACT_ADDRESSES.SkillerItems as Address,
-            abi: ABIS.SkillerItems,
-            functionName: 'balanceOf',
-            args: [tbaAddress, 201n]
-        });
-    } catch (e) {
-        console.error("Error reading items:", e);
-    }
+    let pickaxeBalance = 0n;
+    let oreBalance = 0n;
+    let goldBalance = 0n;
+    
+    let miningLevel = 1n;
+    let miningXp = 0n;
+    let woodcuttingLevel = 1n;
+    let woodcuttingXp = 0n;
 
-    let profileImage = null;
     try {
-        const uri = await publicClient.readContract({
-            address: CONTRACT_ADDRESSES.SkillerProfile as Address,
-            abi: ABIS.SkillerProfile,
-            functionName: 'tokenURI',
-            args: [tokenId]
-        });
-        
-        if (uri.startsWith("data:application/json;base64,")) {
-            const base64Json = uri.split(",")[1];
-            const jsonString = atob(base64Json);
-            const metadata = JSON.parse(jsonString);
-            profileImage = metadata.image;
+        // Read Items (101, 201, 102, 202) & Gold
+        const promises = [
+            publicClient.readContract({
+                address: CONTRACT_ADDRESSES.SkillerItems as Address,
+                abi: ABIS.SkillerItems,
+                functionName: 'balanceOf',
+                args: [tbaAddress, 101n]
+            }),
+            publicClient.readContract({
+                address: CONTRACT_ADDRESSES.SkillerItems as Address,
+                abi: ABIS.SkillerItems,
+                functionName: 'balanceOf',
+                args: [tbaAddress, 201n]
+            }),
+            publicClient.readContract({
+                address: CONTRACT_ADDRESSES.SkillerItems as Address,
+                abi: ABIS.SkillerItems,
+                functionName: 'balanceOf',
+                args: [tbaAddress, 102n]
+            }),
+            publicClient.readContract({
+                address: CONTRACT_ADDRESSES.SkillerItems as Address,
+                abi: ABIS.SkillerItems,
+                functionName: 'balanceOf',
+                args: [tbaAddress, 202n]
+            })
+        ];
+
+        if (CONTRACT_ADDRESSES.SkillerGold) {
+            promises.push(
+                publicClient.readContract({
+                    address: CONTRACT_ADDRESSES.SkillerGold as Address,
+                    abi: ABIS.SkillerGold,
+                    functionName: 'balanceOf',
+                    args: [tbaAddress]
+                })
+            );
         }
+
+        const results = await Promise.all(promises);
+        axeBalance = results[0] as bigint;
+        woodBalance = results[1] as bigint;
+        pickaxeBalance = results[2] as bigint;
+        oreBalance = results[3] as bigint;
+        
+        if (CONTRACT_ADDRESSES.SkillerGold) {
+            goldBalance = results[4] as bigint;
+        }
+
+        // Read Mining XP/Level
+        if (CONTRACT_ADDRESSES.SkillerMining) {
+            miningLevel = await publicClient.readContract({
+                address: CONTRACT_ADDRESSES.SkillerMining as Address,
+                abi: ABIS.SkillerMining,
+                functionName: 'getLevel',
+                args: [tokenId]
+            });
+            miningXp = await publicClient.readContract({
+                address: CONTRACT_ADDRESSES.SkillerMining as Address,
+                abi: ABIS.SkillerMining,
+                functionName: 'profileXp',
+                args: [tokenId]
+            });
+        }
+
+        // Read Woodcutting XP/Level
+        if (CONTRACT_ADDRESSES.SkillerChopping) {
+            // Check if getLevel exists on Chopping (it does based on our check)
+            woodcuttingLevel = await publicClient.readContract({
+                address: CONTRACT_ADDRESSES.SkillerChopping as Address,
+                abi: ABIS.SkillerChopping,
+                functionName: 'getLevel',
+                args: [tokenId]
+            });
+            // Check profileXp on Chopping
+             woodcuttingXp = await publicClient.readContract({
+                address: CONTRACT_ADDRESSES.SkillerChopping as Address,
+                abi: ABIS.SkillerChopping,
+                functionName: 'profileXp',
+                args: [tokenId]
+            });
+        }
+
     } catch (e) {
-        console.error("Error fetching metadata:", e);
+        console.error("Error reading items/xp:", e);
     }
 
     return {
         id: tokenId,
-        image: profileImage,
+        image: '', // Not used
         tba: tbaAddress,
         axeBalance,
-        woodBalance
+        woodBalance,
+        pickaxeBalance,
+        oreBalance,
+        goldBalance,
+        miningLevel,
+        miningXp,
+        woodcuttingLevel,
+        woodcuttingXp
     };
   }
 
-  async function chopTree(tokenId: bigint) {
-    if (!account || choppingProfileId !== null) return;
-    choppingProfileId = tokenId;
+  async function handleAction(action: 'chop' | 'mine' | 'claim', tokenId: bigint) {
+    if (!account || actionLoading) return;
+    actionLoading = action;
     errorMsg = null;
+
     try {
         const walletClient = await getWalletClient(config);
         const publicClient = getPublicClient(config);
-        
-        if (!walletClient || !publicClient) throw new Error("No wallet/public client");
+        if (!walletClient || !publicClient) throw new Error("Wallet not connected");
 
-        console.log("Chopping tree with profile:", tokenId.toString());
+        let address: Address;
+        let abi: any;
+        let functionName: string;
 
-        // Using SkillerChopping contract
+        if (action === 'chop') {
+            address = CONTRACT_ADDRESSES.SkillerChopping as Address;
+            abi = ABIS.SkillerChopping;
+            functionName = 'chopTree';
+        } else if (action === 'mine') {
+            address = CONTRACT_ADDRESSES.SkillerMining as Address;
+            abi = ABIS.SkillerMining;
+            functionName = 'mineOre';
+        } else {
+            address = CONTRACT_ADDRESSES.SkillerMining as Address;
+            abi = ABIS.SkillerMining;
+            functionName = 'claimPickaxe';
+        }
+
         const { request } = await publicClient.simulateContract({
             account,
-            address: CONTRACT_ADDRESSES.SkillerChopping as Address,
-            abi: ABIS.SkillerChopping,
-            functionName: 'chopTree',
+            address,
+            abi,
+            functionName,
             args: [tokenId]
         });
+
         const hash = await walletClient.writeContract(request);
-        console.log("Chop tx sent:", hash);
-        await publicClient.waitForTransactionReceipt({ hash });
-        console.log("Chop tx confirmed:", hash);
+        showToast('Transaction Sent...');
         
-        // Wait a moment for state to update
-        await new Promise(resolve => setTimeout(resolve, 2000));
+        await publicClient.waitForTransactionReceipt({ hash });
+        
+        // Wait a bit for indexing
+        await new Promise(r => setTimeout(r, 2000));
+        
+        const prevXp = action === 'chop' ? selectedProfile?.woodcuttingXp : selectedProfile?.miningXp;
         await loadProfiles(true);
+        
+        if (selectedProfileId) {
+            const updatedProfile = profiles.find(p => p.id === selectedProfileId);
+            if (updatedProfile) {
+                if (action === 'chop') {
+                    const gained = (updatedProfile.woodcuttingXp || 0n) - (prevXp || 0n);
+                    if (gained > 0n) showToast(`+${gained} Woodcutting XP`, 'woodcutting-xp');
+                    showToast(`+1 Oak Log`, 'inventory');
+                } else if (action === 'mine') {
+                    const gained = (updatedProfile.miningXp || 0n) - (prevXp || 0n);
+                    if (gained > 0n) showToast(`+${gained} Mining XP`, 'mining-xp');
+                    showToast(`+1 Iron Ore`, 'inventory');
+                } else {
+                    showToast('Pickaxe Claimed!', 'inventory');
+                }
+            }
+        }
+
     } catch (e: any) {
-        console.error("Error chopping tree:", e);
-        errorMsg = e.message || "Failed to chop tree";
+        console.error(`Error ${action}:`, e);
+        // Shorten error message for toast
+        if (e.message?.includes("User rejected") || e.message?.includes("User denied")) {
+            showToast("Transaction Cancelled", 'error');
+        } else {
+            showToast(`Failed to ${action}`, 'error');
+        }
     } finally {
-        choppingProfileId = null;
+        actionLoading = null;
     }
   }
 
@@ -232,8 +395,7 @@
     try {
         const walletClient = await getWalletClient(config);
         const publicClient = getPublicClient(config);
-        
-        if (!walletClient || !publicClient) throw new Error("No wallet/public client");
+        if (!walletClient || !publicClient) throw new Error("Wallet not connected");
 
         const { request } = await publicClient.simulateContract({
             account,
@@ -243,231 +405,672 @@
             args: [account]
         });
         const hash = await walletClient.writeContract(request);
-        const receipt = await publicClient.waitForTransactionReceipt({ hash });
+        showToast('Minting...');
+        await publicClient.waitForTransactionReceipt({ hash });
         
-        console.log("Transaction confirmed:", receipt.transactionHash);
-        
-        // Wait a moment for state to update
-        await new Promise(resolve => setTimeout(resolve, 2000));
-        
-        // Reload profiles
+        await new Promise(r => setTimeout(r, 2000));
         await loadProfiles(true);
-        
-        console.log("Profiles loaded:", profiles.length);
+        showToast('Profile Minted!');
     } catch (e: any) {
         console.error("Error creating profile:", e);
-        errorMsg = e.message || "Failed to create profile";
+        if (e.message?.includes("User rejected") || e.message?.includes("User denied")) {
+            showToast("Transaction Cancelled", 'error');
+        } else {
+            showToast("Failed to create profile", 'error');
+        }
     } finally {
         loading = false;
     }
   }
 </script>
 
-<main class="container">
-  <h1>Skiller</h1>
-  <p>The MMORPG where your profile is a wallet.</p>
-  
-  {#if !account}
-    <button on:click={connectWallet}>Connect Wallet</button>
-    {#if errorMsg}
-        <p class="error">{errorMsg}</p>
-    {/if}
-  {:else}
-    <p>Connected: {account}</p>
-    
-    {#if isLoadingProfiles}
-        <div class="loading-interstitial">
-            <div class="spinner"></div>
-            <p>Loading your characters...</p>
+<div class="app-container">
+    <header>
+        <div class="header-left">
+            {#if selectedProfile}
+                <button class="back-btn" on:click={() => selectedProfileId = null}>
+                    ← Back
+                </button>
+            {/if}
         </div>
-    {:else}
-        {#if profiles.length > 0}
-            <div class="profiles-grid">
-                {#each profiles as profile}
-                    <div class="profile-card">
-                        {#if profile.image}
-                            <img src={profile.image} alt="Profile NFT" class="nft-image" />
-                        {:else}
-                            <h2>Skiller #{profile.id}</h2>
-                            <p>Loading image...</p>
-                        {/if}
+        <div class="header-right">
+            {#if selectedProfile}
+                <button class="inventory-toggle-btn" on:click={() => showInventory = true}>
+                    🎒
+                </button>
+            {/if}
+        </div>
+    </header>
 
-                        <p class="tba-address"><strong>TBA:</strong> <br/> <code>{profile.tba}</code></p>
-                        <div class="inventory">
-                            <p>🪓 Axes: {profile.axeBalance}</p>
-                            <p>🪵 Wood: {profile.woodBalance}</p>
+    {#if showInventory && selectedProfile}
+        <div class="modal-backdrop" on:click={() => showInventory = false}>
+            <div class="modal-content" on:click|stopPropagation>
+                <div class="modal-header">
+                    <h2>Inventory</h2>
+                    <button class="close-btn" on:click={() => showInventory = false}>✕</button>
+                </div>
+                <div class="inventory-grid">
+                    {#if selectedProfile.goldBalance > 0n}
+                        <div class="inventory-item">
+                            <span class="item-icon">💰</span>
+                            <div class="item-details">
+                                <span class="item-name">Gold</span>
+                                <span class="item-count">x{Number(selectedProfile.goldBalance) / 1e18}</span>
+                            </div>
                         </div>
-                        
-                        <div class="actions">
-                            <button 
-                                class="secondary chopping-btn" 
-                                class:active={choppingProfileId === profile.id}
-                                on:click={() => chopTree(profile.id)} 
-                                disabled={choppingProfileId !== null}
-                            >
-                                {#if choppingProfileId === profile.id}
-                                    <span class="axe-anim">🪓</span> Chopping...
-                                {:else}
-                                    Chop Tree
-                                {/if}
-                            </button>
+                    {/if}
+                    {#if selectedProfile.axeBalance > 0n}
+                        <div class="inventory-item">
+                            <span class="item-icon">🪓</span>
+                            <div class="item-details">
+                                <span class="item-name">Bronze Axe</span>
+                            </div>
                         </div>
-                    </div>
-                {/each}
+                    {/if}
+                    {#if selectedProfile.woodBalance > 0n}
+                        <div class="inventory-item">
+                            <span class="item-icon">🪵</span>
+                            <div class="item-details">
+                                <span class="item-name">Oak Log</span>
+                                <span class="item-count">x{selectedProfile.woodBalance}</span>
+                            </div>
+                        </div>
+                    {/if}
+                    {#if selectedProfile.pickaxeBalance > 0n}
+                        <div class="inventory-item">
+                            <span class="item-icon">⛏️</span>
+                            <div class="item-details">
+                                <span class="item-name">Bronze Pickaxe</span>
+                            </div>
+                        </div>
+                    {/if}
+                    {#if selectedProfile.oreBalance > 0n}
+                        <div class="inventory-item">
+                            <span class="item-icon">🪨</span>
+                            <div class="item-details">
+                                <span class="item-name">Iron Ore</span>
+                                <span class="item-count">x{selectedProfile.oreBalance}</span>
+                            </div>
+                        </div>
+                    {/if}
+                    
+                    {#if selectedProfile.axeBalance === 0n && selectedProfile.woodBalance === 0n && selectedProfile.pickaxeBalance === 0n && selectedProfile.oreBalance === 0n && selectedProfile.goldBalance === 0n}
+                        <div class="empty-state">Inventory is empty</div>
+                    {/if}
+                </div>
+            </div>
+        </div>
+    {/if}
+
+    <main>
+        {#if errorMsg}
+            <div class="error-banner">{errorMsg}</div>
+        {/if}
+
+        <div class="toast-container">
+            {#each toasts as toast (toast.id)}
+                <div class="toast {toast.type}" animate:flip={{duration: 300}}>
+                    {toast.msg}
+                </div>
+            {/each}
+        </div>
+
+        {#if isInitializing}
+             <div class="loading">
+                <div class="spinner"></div>
+                <p>Loading Skiller...</p>
+            </div>
+        {:else if !account}
+            <div class="welcome">
+                <h1>Welcome to Skiller</h1>
+                <p>Connect your wallet to play.</p>
+            </div>
+        {:else if isLoadingProfiles}
+            <div class="loading">
+                <div class="spinner"></div>
+                <p>Loading characters...</p>
+            </div>
+        {:else if !selectedProfile}
+            <!-- Character Selection Screen -->
+            <div class="selection-screen">
+                <h2>Select Character</h2>
+                
+                <div class="profiles-grid">
+                    {#each profiles as profile}
+                        <button class="profile-card-btn" on:click={() => selectedProfileId = profile.id}>
+                            <h3>Skiller #{profile.id}</h3>
+                        </button>
+                    {/each}
+                </div>
+
+                <div class="create-section">
+                    <button class="mint-btn" on:click={createProfile} disabled={loading}>
+                        {#if loading}
+                            <div class="spinner-small"></div>
+                        {:else}
+                            Mint New Character
+                        {/if}
+                    </button>
+                </div>
             </div>
         {:else}
-             <p>You don't have any Skiller profiles yet.</p>
+            <!-- Gameplay Screen -->
+            <div class="gameplay-screen">
+                <div class="character-header">
+                    <h1>Skiller #{selectedProfile.id}</h1>
+                </div>
+
+                <div class="stats-grid">
+                    <div class="stat-column">
+                        <div class="stat-card">
+                            <h4>Woodcutting</h4>
+                            <div class="level">Lvl {selectedProfile.woodcuttingLevel}</div>
+                            <div class="xp-bar">
+                                <div class="xp-fill" style="width: {(Number(selectedProfile.woodcuttingXp) / Number(getNextLevelXp(selectedProfile.woodcuttingLevel))) * 100}%"></div>
+                            </div>
+                            <div class="xp-text">{selectedProfile.woodcuttingXp} / {getNextLevelXp(selectedProfile.woodcuttingLevel)} XP</div>
+                        </div>
+                        
+                        <button 
+                            class="action-btn wood" 
+                            disabled={selectedProfile.axeBalance === 0n || !!actionLoading}
+                            on:click={() => handleAction('chop', selectedProfile.id)}
+                        >
+                            {#if actionLoading === 'chop'}
+                                <div class="spinner-small"></div>
+                            {:else if selectedProfile.axeBalance === 0n}
+                                Need Axe
+                            {:else}
+                                Chop Tree
+                            {/if}
+                        </button>
+                    </div>
+
+                    <div class="stat-column">
+                        <div class="stat-card">
+                            <h4>Mining</h4>
+                            <div class="level">Lvl {selectedProfile.miningLevel}</div>
+                            <div class="xp-bar">
+                                <div class="xp-fill" style="width: {(Number(selectedProfile.miningXp) / Number(getNextLevelXp(selectedProfile.miningLevel))) * 100}%"></div>
+                            </div>
+                            <div class="xp-text">{selectedProfile.miningXp} / {getNextLevelXp(selectedProfile.miningLevel)} XP</div>
+                        </div>
+
+                        {#if selectedProfile.pickaxeBalance > 0n}
+                            <button 
+                                class="action-btn ore" 
+                                disabled={!!actionLoading}
+                                on:click={() => handleAction('mine', selectedProfile.id)}
+                            >
+                                {#if actionLoading === 'mine'}
+                                    <div class="spinner-small"></div>
+                                {:else}
+                                    Mine Ore
+                                {/if}
+                            </button>
+                        {:else}
+                            <button 
+                                class="action-btn claim"
+                                disabled={!!actionLoading}
+                                on:click={() => handleAction('claim', selectedProfile.id)}
+                            >
+                                {#if actionLoading === 'claim'}
+                                    <div class="spinner-small"></div>
+                                {:else}
+                                    Claim Pickaxe
+                                {/if}
+                            </button>
+                        {/if}
+                    </div>
+                </div>
+            </div>
         {/if}
-        
-        <div class="create-profile">
-            <button on:click={createProfile} disabled={loading}>
-                {loading ? 'Minting...' : 'Mint New Character'}
-            </button>
-        </div>
-        {#if errorMsg}
-            <p class="error">{errorMsg}</p>
-        {/if}
-    {/if}
-  {/if}
-</main>
+    </main>
+</div>
 
 <style>
-  :global(body) {
-    background-color: #000000;
-    color: #ffffff;
-    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
-  }
-  .container {
-    max-width: 100%;
-    margin: 0 auto;
-    text-align: center;
-    padding: 1rem;
-    box-sizing: border-box;
-  }
-  h1 {
-    font-size: 2rem;
-    margin-bottom: 0.5rem;
-  }
-  .profiles-grid {
-    display: flex;
-    flex-direction: column;
-    gap: 1.5rem;
-    margin-bottom: 2rem;
-    width: 100%;
-  }
-  @media (min-width: 600px) {
+    :global(body) {
+        background-color: #121212;
+        color: #e0e0e0;
+        font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+        margin: 0;
+    }
+
+    .app-container {
+        max-width: 600px;
+        margin: 0 auto;
+        min-height: 100vh;
+        display: flex;
+        flex-direction: column;
+    }
+
+    header {
+        padding: 1rem;
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        height: 40px; /* Fixed height for alignment */
+    }
+
+    .header-right {
+        display: flex;
+        align-items: center;
+    }
+
+    .inventory-toggle-btn {
+        background: #1e1e1e;
+        border: 1px solid #333;
+        color: white;
+        width: 40px;
+        height: 40px;
+        border-radius: 8px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        cursor: pointer;
+        font-size: 1.2rem;
+        transition: all 0.2s;
+    }
+
+    .inventory-toggle-btn:hover {
+        background: #2a2a2a;
+        border-color: #555;
+    }
+
+    /* Modal Styles */
+    .modal-backdrop {
+        position: fixed;
+        top: 0;
+        left: 0;
+        width: 100%;
+        height: 100%;
+        background: rgba(0, 0, 0, 0.8);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        z-index: 2000;
+        animation: fadeIn 0.2s ease-out;
+    }
+
+    .modal-content {
+        background: #1e1e1e;
+        width: 90%;
+        max-width: 400px;
+        border-radius: 16px;
+        border: 1px solid #333;
+        padding: 1.5rem;
+        animation: slideUp 0.3s ease-out;
+    }
+
+    .modal-header {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        margin-bottom: 1.5rem;
+    }
+
+    .modal-header h2 {
+        margin: 0;
+        font-size: 1.5rem;
+    }
+
+    .close-btn {
+        background: none;
+        border: none;
+        color: #888;
+        font-size: 1.5rem;
+        cursor: pointer;
+        padding: 0;
+        width: 32px;
+        height: 32px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        border-radius: 50%;
+    }
+    .close-btn:hover {
+        background: rgba(255, 255, 255, 0.1);
+        color: white;
+    }
+
+    .inventory-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fill, minmax(80px, 1fr));
+        gap: 0.75rem;
+    }
+
+    .inventory-item {
+        background: #252525;
+        border-radius: 12px;
+        padding: 0.75rem;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        text-align: center;
+        gap: 0.5rem;
+        aspect-ratio: 1;
+        justify-content: center;
+    }
+
+    .inventory-item .item-icon {
+        font-size: 2rem;
+    }
+
+    .inventory-item .item-details {
+        display: flex;
+        flex-direction: column;
+        gap: 0.25rem;
+    }
+
+    .inventory-item .item-name {
+        font-size: 0.75rem;
+        color: #aaa;
+    }
+
+    .inventory-item .item-count {
+        font-size: 0.9rem;
+        font-weight: bold;
+        color: white;
+    }
+
+    .empty-state {
+        grid-column: 1 / -1;
+        text-align: center;
+        color: #666;
+        padding: 2rem;
+        font-style: italic;
+    }
+
+    @keyframes fadeIn {
+        from { opacity: 0; }
+        to { opacity: 1; }
+    }
+
+    @keyframes slideUp {
+        from { transform: translateY(20px); opacity: 0; }
+        to { transform: translateY(0); opacity: 1; }
+    }
+
+    .connect-btn {
+        background: #333;
+        color: white;
+        border: none;
+        padding: 0.5rem 1rem;
+        border-radius: 8px;
+        cursor: pointer;
+    }
+
+    main {
+        padding: 1rem;
+        flex: 1;
+        display: flex;
+        flex-direction: column;
+        position: relative;
+    }
+
+    .welcome {
+        text-align: center;
+        margin-top: 4rem;
+    }
+
+    /* Selection Screen */
+    .selection-screen {
+        display: flex;
+        flex-direction: column;
+        gap: 2rem;
+        text-align: center;
+    }
+
     .profiles-grid {
         display: grid;
-        grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+        grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+        gap: 1rem;
     }
-  }
-  .profile-card {
-    border: 1px solid #333;
-    padding: 1.5rem;
-    border-radius: 12px;
-    background: #111;
-    color: #fff;
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    box-shadow: 0 4px 6px rgba(0,0,0,0.3);
-  }
-  .nft-image {
-    width: 100%;
-    max-width: 280px;
-    aspect-ratio: 1;
-    border-radius: 8px;
-    margin-bottom: 1rem;
-    border: 2px solid #444;
-    background: black;
-    object-fit: cover;
-  }
-  code {
-    background: #222;
-    padding: 0.4rem 0.6rem;
-    border-radius: 6px;
-    word-break: break-all;
-    font-size: 0.8rem;
-    color: #aaa;
-    border: 1px solid #333;
-    display: block;
-    margin-top: 0.5rem;
-  }
-  button {
-    padding: 0.8rem 1.5rem;
-    font-size: 1rem;
-    font-weight: 600;
-    cursor: pointer;
-    background: #ff3e00;
-    color: white;
-    border: none;
-    border-radius: 8px;
-    width: 100%;
-    max-width: 300px;
-    transition: background 0.2s;
-  }
-  button:hover {
-    background: #e63800;
-  }
-  button.secondary {
-    background: #333;
-    margin-top: 1rem;
-  }
-  button.secondary:hover {
-    background: #444;
-  }
-  .tba-address {
-    margin-top: 1rem;
-    font-size: 0.9rem;
-    width: 100%;
-  }
-  .create-profile {
-    margin-top: 2rem;
-    margin-bottom: 4rem;
-  }
-  .error {
-    color: #ff3e00;
-    margin-top: 1rem;
-    background: rgba(255, 62, 0, 0.1);
-    padding: 1rem;
-    border-radius: 8px;
-  }
-  .loading-interstitial {
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    justify-content: center;
-    padding: 4rem 0;
-    color: #888;
-  }
-  .spinner {
-    width: 40px;
-    height: 40px;
-    border: 4px solid #333;
-    border-top: 4px solid #ff3e00;
-    border-radius: 50%;
-    animation: spin 1s linear infinite;
-    margin-bottom: 1rem;
-  }
-  @keyframes spin {
-    0% { transform: rotate(0deg); }
-    100% { transform: rotate(360deg); }
-  }
-  @keyframes chop {
-    0% { transform: rotate(0deg); }
-    50% { transform: rotate(-45deg); }
-    100% { transform: rotate(0deg); }
-  }
-  .axe-anim {
-    display: inline-block;
-    animation: chop 0.4s ease-in-out infinite;
-    margin-right: 0.5rem;
-    transform-origin: bottom left;
-  }
-  .chopping-btn.active {
-    background: #555;
-    cursor: not-allowed;
-    border-color: #666;
-    color: #ddd;
-  }
+
+    .profile-card-btn {
+        background: #1e1e1e;
+        border: 1px solid #333;
+        border-radius: 12px;
+        padding: 2rem 1rem;
+        cursor: pointer;
+        transition: all 0.2s;
+        color: white;
+    }
+
+    .profile-card-btn:hover {
+        background: #2a2a2a;
+        border-color: #555;
+        transform: translateY(-2px);
+    }
+
+    .create-section {
+        margin-top: 2rem;
+    }
+
+    .mint-btn {
+        background: #2563eb;
+        color: white;
+        border: none;
+        padding: 1rem 2rem;
+        border-radius: 8px;
+        font-weight: 600;
+        font-size: 1rem;
+        cursor: pointer;
+        width: 100%;
+        max-width: 300px;
+        display: flex;
+        justify-content: center;
+        align-items: center;
+        margin: 0 auto;
+    }
+    .mint-btn:hover { background: #1d4ed8; }
+    .mint-btn:disabled { opacity: 0.5; cursor: not-allowed; }
+
+    /* Gameplay Screen */
+    .gameplay-screen {
+        display: flex;
+        flex-direction: column;
+        gap: 1.5rem;
+    }
+
+    .back-btn {
+        background: none;
+        border: none;
+        color: #888;
+        cursor: pointer;
+        font-size: 1rem;
+        padding: 0;
+        display: flex;
+        align-items: center;
+    }
+    .back-btn:hover { color: white; }
+
+    .character-header {
+        text-align: center;
+        margin-bottom: 1rem;
+    }
+
+    .character-header h1 {
+        margin: 0;
+        font-size: 2rem;
+    }
+
+    .inventory-panel {
+        background: #1e1e1e;
+        padding: 1rem;
+        border-radius: 12px;
+        border: 1px solid #333;
+        position: relative;
+    }
+
+    .inventory-list {
+        display: flex;
+        flex-direction: column;
+        gap: 0.5rem;
+    }
+
+    .item {
+        padding: 0.75rem;
+        background: #252525;
+        border-radius: 8px;
+        text-align: left;
+        display: flex;
+        align-items: center;
+        gap: 0.75rem;
+    }
+    
+    .item-icon { font-size: 1.2rem; }
+
+    .item.empty { color: #555; font-style: italic; background: none; padding-left: 0; }
+
+    /* Stats & Actions Grid */
+    .stats-grid {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 1rem;
+    }
+
+    .stat-column {
+        display: flex;
+        flex-direction: column;
+        gap: 1rem;
+    }
+
+    .stat-card {
+        background: #1e1e1e;
+        padding: 1rem;
+        border-radius: 12px;
+        text-align: center;
+        border: 1px solid #333;
+        flex: 1;
+        position: relative;
+    }
+
+    .stat-card h4 { margin: 0 0 0.5rem 0; color: #aaa; font-size: 0.9rem; text-transform: uppercase; }
+    .stat-card .level { font-size: 1.5rem; font-weight: bold; margin-bottom: 0.5rem; }
+    
+    .xp-bar {
+        height: 6px;
+        background: #333;
+        border-radius: 3px;
+        margin-bottom: 0.5rem;
+        overflow: hidden;
+    }
+    
+    .xp-fill {
+        height: 100%;
+        background: #2563eb;
+        transition: width 0.5s ease-out;
+    }
+
+    .xp-text { font-size: 0.75rem; color: #666; }
+
+    .action-btn {
+        width: 100%;
+        padding: 1rem;
+        border: none;
+        border-radius: 12px;
+        font-weight: bold;
+        font-size: 1rem;
+        cursor: pointer;
+        transition: transform 0.1s, opacity 0.2s;
+        display: flex;
+        justify-content: center;
+        align-items: center;
+        min-height: 56px;
+    }
+    
+    .action-btn:active:not(:disabled) { transform: scale(0.98); }
+    .action-btn:disabled { opacity: 0.5; cursor: not-allowed; }
+
+    .action-btn.wood { background: #2e7d32; color: white; }
+    .action-btn.wood:hover:not(:disabled) { background: #1b5e20; }
+
+    .action-btn.ore { background: #5d4037; color: white; }
+    .action-btn.ore:hover:not(:disabled) { background: #3e2723; }
+
+    .action-btn.claim { background: #0288d1; color: white; }
+
+    .error-banner {
+        background: #cf6679;
+        color: black;
+        padding: 1rem;
+        border-radius: 8px;
+        margin-bottom: 1rem;
+        text-align: center;
+    }
+
+    .toast-container {
+        position: fixed;
+        top: 20px;
+        left: 50%;
+        transform: translateX(-50%);
+        display: flex;
+        flex-direction: column;
+        gap: 0.5rem;
+        z-index: 1000;
+        pointer-events: none;
+        align-items: center;
+    }
+
+    .toast {
+        background: #333;
+        color: white;
+        padding: 0.75rem 1.5rem;
+        border-radius: 24px;
+        box-shadow: 0 4px 12px rgba(0,0,0,0.3);
+        animation: fadeDown 0.3s ease-out, fadeOut 0.5s ease-in 2.5s forwards;
+        white-space: nowrap;
+    }
+
+    @keyframes fadeDown {
+        from { opacity: 0; transform: translateY(-20px); }
+        to { opacity: 1; transform: translateY(0); }
+    }
+
+    @keyframes fadeOut {
+        from { opacity: 1; }
+        to { opacity: 0; }
+    }
+
+    .toast.xp {
+        background: #2563eb; /* Blue for XP */
+    }
+
+    .toast.inventory {
+        background: #e6b800; /* Gold/Yellow for Items */
+        color: black;
+        font-weight: bold;
+    }
+
+    .toast.error {
+        background: #cf6679; /* Reddish */
+        color: white;
+        font-weight: bold;
+    }
+
+    .loading { text-align: center; color: #888; margin-top: 2rem; }
+
+    .spinner {
+        width: 40px;
+        height: 40px;
+        border: 3px solid rgba(255,255,255,0.1);
+        border-top-color: #2563eb;
+        border-radius: 50%;
+        animation: spin 1s linear infinite;
+        margin: 0 auto 1rem;
+    }
+
+    .spinner-small {
+        width: 20px;
+        height: 20px;
+        border: 2px solid rgba(255,255,255,0.1);
+        border-top-color: white;
+        border-radius: 50%;
+        animation: spin 1s linear infinite;
+    }
+
+    @keyframes spin {
+        to { transform: rotate(360deg); }
+    }
 </style>
