@@ -7,6 +7,7 @@
   import type { Address } from 'viem';
   import { ABIS } from '$lib/abis';
   import addresses from '$lib/addresses.json';
+  import { Backpack, User, Axe, Pickaxe, Coins, TreeDeciduous, Mountain, ArrowLeft } from '@lucide/svelte';
 
   const CONTRACT_ADDRESSES = addresses;
 
@@ -35,6 +36,7 @@
   let isLoadingProfiles = false;
   let isInitializing = true;
   let showInventory = false;
+  let showProfile = false;
   let errorMsg: string | null = null;
   type Toast = {
     id: number;
@@ -428,15 +430,24 @@
     <header>
         <div class="header-left">
             {#if selectedProfile}
-                <button class="back-btn" on:click={() => selectedProfileId = null}>
-                    ← Back
+                <button class="square-btn" on:click={() => selectedProfileId = null}>
+                    <ArrowLeft size={24} />
                 </button>
             {/if}
         </div>
+        <div class="header-center">
+            <div class="title-card">
+                {#if selectedProfile}
+                    SKILLER #{selectedProfile.id}
+                {:else}
+                    SKILLER
+                {/if}
+            </div>
+        </div>
         <div class="header-right">
             {#if selectedProfile}
-                <button class="inventory-toggle-btn" on:click={() => showInventory = true}>
-                    🎒
+                <button class="square-btn" on:click={() => showProfile = !showProfile}>
+                    <User size={24} />
                 </button>
             {/if}
         </div>
@@ -444,59 +455,58 @@
 
     {#if showInventory && selectedProfile}
         <div class="modal-backdrop" on:click={() => showInventory = false}>
-            <div class="modal-content" on:click|stopPropagation>
-                <div class="modal-header">
-                    <h2>Inventory</h2>
-                    <button class="close-btn" on:click={() => showInventory = false}>✕</button>
-                </div>
+            <div class="modal-content inventory-modal" on:click|stopPropagation>
                 <div class="inventory-grid">
                     {#if selectedProfile.goldBalance > 0n}
                         <div class="inventory-item">
-                            <span class="item-icon">💰</span>
-                            <div class="item-details">
-                                <span class="item-name">Gold</span>
-                                <span class="item-count">x{Number(selectedProfile.goldBalance) / 1e18}</span>
-                            </div>
+                            <span class="item-icon"><Coins size={32} color="#fbbf24" /></span>
+                            <span class="item-count">{Number(selectedProfile.goldBalance) / 1e18}</span>
                         </div>
                     {/if}
                     {#if selectedProfile.axeBalance > 0n}
                         <div class="inventory-item">
-                            <span class="item-icon">🪓</span>
-                            <div class="item-details">
-                                <span class="item-name">Bronze Axe</span>
-                            </div>
+                            <span class="item-icon"><Axe size={32} color="#9ca3af" /></span>
                         </div>
                     {/if}
                     {#if selectedProfile.woodBalance > 0n}
                         <div class="inventory-item">
-                            <span class="item-icon">🪵</span>
-                            <div class="item-details">
-                                <span class="item-name">Oak Log</span>
-                                <span class="item-count">x{selectedProfile.woodBalance}</span>
-                            </div>
+                            <span class="item-icon"><TreeDeciduous size={32} color="#4ade80" /></span>
+                            <span class="item-count">{selectedProfile.woodBalance}</span>
                         </div>
                     {/if}
                     {#if selectedProfile.pickaxeBalance > 0n}
                         <div class="inventory-item">
-                            <span class="item-icon">⛏️</span>
-                            <div class="item-details">
-                                <span class="item-name">Bronze Pickaxe</span>
-                            </div>
+                            <span class="item-icon"><Pickaxe size={32} color="#9ca3af" /></span>
                         </div>
                     {/if}
                     {#if selectedProfile.oreBalance > 0n}
                         <div class="inventory-item">
-                            <span class="item-icon">🪨</span>
-                            <div class="item-details">
-                                <span class="item-name">Iron Ore</span>
-                                <span class="item-count">x{selectedProfile.oreBalance}</span>
-                            </div>
+                            <span class="item-icon"><Mountain size={32} color="#a8a29e" /></span>
+                            <span class="item-count">{selectedProfile.oreBalance}</span>
                         </div>
                     {/if}
                     
                     {#if selectedProfile.axeBalance === 0n && selectedProfile.woodBalance === 0n && selectedProfile.pickaxeBalance === 0n && selectedProfile.oreBalance === 0n && selectedProfile.goldBalance === 0n}
-                        <div class="empty-state">Inventory is empty</div>
+                        <div class="empty-state">Empty</div>
                     {/if}
+                </div>
+            </div>
+        </div>
+    {/if}
+
+    {#if showProfile && selectedProfile}
+        <div class="modal-backdrop" on:click={() => showProfile = false}>
+            <div class="modal-content profile-modal" on:click|stopPropagation>
+                <div class="profile-info">
+                    <h3>SKILLER #{selectedProfile.id}</h3>
+                    <div class="info-row">
+                        <span class="label">User:</span>
+                        <span class="value" on:click={() => copyToClipboard(account || '')}>{truncateAddress(account || '')}</span>
+                    </div>
+                    <div class="info-row">
+                        <span class="label">TBA:</span>
+                        <span class="value" on:click={() => copyToClipboard(selectedProfile.tba)}>{truncateAddress(selectedProfile.tba)}</span>
+                    </div>
                 </div>
             </div>
         </div>
@@ -518,11 +528,11 @@
         {#if isInitializing}
              <div class="loading">
                 <div class="spinner"></div>
-                <p>Loading Skiller...</p>
+                <p>Loading SKILLER...</p>
             </div>
         {:else if !account}
             <div class="welcome">
-                <h1>Welcome to Skiller</h1>
+                <h1>Welcome to SKILLER</h1>
                 <p>Connect your wallet to play.</p>
             </div>
         {:else if isLoadingProfiles}
@@ -533,33 +543,18 @@
         {:else if !selectedProfile}
             <!-- Character Selection Screen -->
             <div class="selection-screen">
-                <h2>Select Character</h2>
-                
-                <div class="profiles-grid">
+                <div class="profiles-list">
                     {#each profiles as profile}
                         <button class="profile-card-btn" on:click={() => selectedProfileId = profile.id}>
-                            <h3>Skiller #{profile.id}</h3>
+                            <h3>SKILLER #{profile.id}</h3>
                         </button>
                     {/each}
-                </div>
-
-                <div class="create-section">
-                    <button class="mint-btn" on:click={createProfile} disabled={loading}>
-                        {#if loading}
-                            <div class="spinner-small"></div>
-                        {:else}
-                            Mint New Character
-                        {/if}
-                    </button>
                 </div>
             </div>
         {:else}
             <!-- Gameplay Screen -->
             <div class="gameplay-screen">
-                <div class="character-header">
-                    <h1>Skiller #{selectedProfile.id}</h1>
-                </div>
-
+                <!-- Stats Grid (FABs removed, moved to header/footer) -->
                 <div class="stats-grid">
                     <div class="stat-column">
                         <div class="stat-card">
@@ -626,6 +621,28 @@
             </div>
         {/if}
     </main>
+
+    <footer>
+        {#if !selectedProfile}
+            {#if account && !isLoadingProfiles && !isInitializing}
+                <button class="mint-btn" on:click={createProfile} disabled={loading}>
+                    {#if loading}
+                        <div class="spinner-small"></div>
+                    {:else}
+                        Mint New Character
+                    {/if}
+                </button>
+            {/if}
+        {:else}
+            <div class="footer-left"></div>
+            <div class="footer-center"></div>
+            <div class="footer-right">
+                <button class="square-btn" on:click={() => showInventory = !showInventory}>
+                    <Backpack size={24} />
+                </button>
+            </div>
+        {/if}
+    </footer>
 </div>
 
 <style>
@@ -639,42 +656,92 @@
     .app-container {
         max-width: 600px;
         margin: 0 auto;
-        min-height: 100vh;
+        height: 100vh; /* Fixed to viewport height */
         display: flex;
         flex-direction: column;
+        overflow: hidden; /* Prevent outer scroll */
     }
 
-    header {
-        padding: 1rem;
+    header, footer {
+        min-height: 80px;
+        height: 80px;
+        max-height: 80px;
+        padding: 0 12px; /* Match vertical spacing: (80px - 56px) / 2 = 12px */
         display: flex;
+        align-items: center;
         justify-content: space-between;
-        align-items: center;
-        height: 40px; /* Fixed height for alignment */
+        flex-shrink: 0;
+        background: #121212;
+        border-bottom: 1px solid #222; /* Subtle separation */
+        z-index: 10;
     }
 
-    .header-right {
+    footer {
+        border-bottom: none;
+        border-top: 1px solid #222;
+    }
+
+    .header-left, .header-right, .footer-left, .footer-right {
+        width: 56px; /* Match button width to reserve space */
         display: flex;
         align-items: center;
     }
+    
+    .header-left, .footer-left {
+        justify-content: flex-start;
+    }
+    
+    .header-right, .footer-right {
+        justify-content: flex-end;
+    }
 
-    .inventory-toggle-btn {
+    .header-center, .footer-center {
+        flex: 1;
+        display: flex;
+        justify-content: center;
+    }
+
+    .square-btn {
+        width: 56px;
+        height: 56px;
         background: #1e1e1e;
         border: 1px solid #333;
+        border-radius: 16px;
         color: white;
-        width: 40px;
-        height: 40px;
-        border-radius: 8px;
         display: flex;
         align-items: center;
         justify-content: center;
         cursor: pointer;
-        font-size: 1.2rem;
         transition: all 0.2s;
+        padding: 0;
     }
 
-    .inventory-toggle-btn:hover {
+    .square-btn:hover {
         background: #2a2a2a;
         border-color: #555;
+        transform: translateY(-2px);
+    }
+
+    .square-btn:active {
+        transform: scale(0.95);
+    }
+
+    .title-card {
+        min-height: 56px;
+        height: 56px;
+        max-height: 56px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        padding: 0 2rem;
+        background: #1e1e1e;
+        border: 1px solid #333;
+        border-radius: 16px;
+        font-weight: bold;
+        color: white;
+        font-size: 1.2rem;
+        line-height: 1;
+        box-sizing: border-box;
     }
 
     /* Modal Styles */
@@ -684,120 +751,112 @@
         left: 0;
         width: 100%;
         height: 100%;
-        background: rgba(0, 0, 0, 0.8);
-        display: flex;
-        align-items: center;
-        justify-content: center;
-        z-index: 2000;
-        animation: fadeIn 0.2s ease-out;
+        background: rgba(0, 0, 0, 0.5); /* Dim background */
+        pointer-events: auto;
+        z-index: 90;
     }
 
     .modal-content {
+        position: fixed;
         background: #1e1e1e;
-        width: 90%;
-        max-width: 400px;
+        width: auto;
+        min-width: 200px;
+        max-width: 300px;
         border-radius: 16px;
         border: 1px solid #333;
-        padding: 1.5rem;
-        animation: slideUp 0.3s ease-out;
+        padding: 1rem;
+        animation: fadeIn 0.2s ease-out;
+        box-shadow: 0 8px 32px rgba(0,0,0,0.5);
+        z-index: 100;
     }
 
-    .modal-header {
+    .inventory-modal {
+        bottom: 90px; /* Above the footer */
+        right: 20px;
+    }
+
+    .profile-modal {
+        top: 90px; /* Below the header */
+        right: 20px;
+    }
+    
+    .profile-info h3 {
+        margin: 0 0 1rem 0;
+        font-size: 1.2rem;
+        color: white;
+        text-align: center;
+    }
+
+    .info-row {
         display: flex;
         justify-content: space-between;
-        align-items: center;
-        margin-bottom: 1.5rem;
+        gap: 1rem;
+        margin-bottom: 0.5rem;
+        font-size: 0.9rem;
     }
 
-    .modal-header h2 {
-        margin: 0;
-        font-size: 1.5rem;
-    }
-
-    .close-btn {
-        background: none;
-        border: none;
+    .info-row .label {
         color: #888;
-        font-size: 1.5rem;
-        cursor: pointer;
-        padding: 0;
-        width: 32px;
-        height: 32px;
-        display: flex;
-        align-items: center;
-        justify-content: center;
-        border-radius: 50%;
     }
-    .close-btn:hover {
-        background: rgba(255, 255, 255, 0.1);
+
+    .info-row .value {
+        color: #aaa;
+        font-family: monospace;
+        cursor: pointer;
+    }
+
+    .info-row .value:hover {
         color: white;
+        text-decoration: underline;
     }
 
     .inventory-grid {
         display: grid;
-        grid-template-columns: repeat(auto-fill, minmax(80px, 1fr));
-        gap: 0.75rem;
+        grid-template-columns: repeat(auto-fill, minmax(60px, 1fr));
+        gap: 0.5rem;
     }
 
     .inventory-item {
         background: #252525;
         border-radius: 12px;
-        padding: 0.75rem;
         display: flex;
-        flex-direction: column;
         align-items: center;
-        text-align: center;
-        gap: 0.5rem;
-        aspect-ratio: 1;
         justify-content: center;
+        aspect-ratio: 1;
+        position: relative;
+        border: 1px solid #333;
     }
 
     .inventory-item .item-icon {
-        font-size: 2rem;
-    }
-
-    .inventory-item .item-details {
         display: flex;
-        flex-direction: column;
-        gap: 0.25rem;
-    }
-
-    .inventory-item .item-name {
-        font-size: 0.75rem;
-        color: #aaa;
+        align-items: center;
+        justify-content: center;
+        width: 100%;
+        height: 100%;
     }
 
     .inventory-item .item-count {
-        font-size: 0.9rem;
+        position: absolute;
+        top: 2px;
+        right: 6px;
+        font-size: 0.8rem;
         font-weight: bold;
         color: white;
+        text-shadow: 1px 1px 2px black;
     }
 
     .empty-state {
         grid-column: 1 / -1;
         text-align: center;
         color: #666;
-        padding: 2rem;
+        padding: 1rem;
         font-style: italic;
+        font-size: 0.9rem;
     }
 
     @keyframes fadeIn {
         from { opacity: 0; }
         to { opacity: 1; }
-    }
-
-    @keyframes slideUp {
-        from { transform: translateY(20px); opacity: 0; }
-        to { transform: translateY(0); opacity: 1; }
-    }
-
-    .connect-btn {
-        background: #333;
-        color: white;
-        border: none;
-        padding: 0.5rem 1rem;
-        border-radius: 8px;
-        cursor: pointer;
     }
 
     main {
@@ -806,122 +865,81 @@
         display: flex;
         flex-direction: column;
         position: relative;
+        overflow-y: auto; /* Scrollable main content */
     }
 
     .welcome {
         text-align: center;
-        margin-top: 4rem;
+        display: flex;
+        flex-direction: column;
+        justify-content: center;
+        align-items: center;
+        flex: 1;
     }
 
     /* Selection Screen */
     .selection-screen {
         display: flex;
         flex-direction: column;
-        gap: 2rem;
-        text-align: center;
+        flex: 1;
+        width: 100%;
+        justify-content: center;
+        align-items: center;
     }
 
-    .profiles-grid {
-        display: grid;
-        grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
-        gap: 1rem;
+    /* List container */
+    .profiles-list {
+        display: flex;
+        flex-direction: column;
+        gap: 0.75rem;
+        width: 100%;
+        max-width: 300px;
     }
+
+    .mint-btn {
+        background: #1e1e1e;
+        color: white;
+        border: 1px solid #333;
+        border-radius: 12px;
+        font-weight: 600;
+        font-size: 1rem;
+        cursor: pointer;
+        width: 100%;
+        height: 56px;
+        display: flex;
+        justify-content: center;
+        align-items: center;
+        transition: all 0.2s;
+    }
+    .mint-btn:hover:not(:disabled) { 
+        background: #2a2a2a; 
+        border-color: #555;
+    }
+    .mint-btn:disabled { opacity: 0.5; cursor: not-allowed; }
 
     .profile-card-btn {
         background: #1e1e1e;
         border: 1px solid #333;
         border-radius: 12px;
-        padding: 2rem 1rem;
+        padding: 0.75rem 1rem;
         cursor: pointer;
         transition: all 0.2s;
         color: white;
-    }
-
-    .profile-card-btn:hover {
-        background: #2a2a2a;
-        border-color: #555;
-        transform: translateY(-2px);
-    }
-
-    .create-section {
-        margin-top: 2rem;
-    }
-
-    .mint-btn {
-        background: #2563eb;
-        color: white;
-        border: none;
-        padding: 1rem 2rem;
-        border-radius: 8px;
-        font-weight: 600;
-        font-size: 1rem;
-        cursor: pointer;
         width: 100%;
-        max-width: 300px;
+        text-align: center;
+        height: 56px;
         display: flex;
-        justify-content: center;
         align-items: center;
-        margin: 0 auto;
+        justify-content: center;
     }
-    .mint-btn:hover { background: #1d4ed8; }
-    .mint-btn:disabled { opacity: 0.5; cursor: not-allowed; }
 
     /* Gameplay Screen */
     .gameplay-screen {
         display: flex;
         flex-direction: column;
         gap: 1.5rem;
+        padding-top: 1rem;
     }
-
-    .back-btn {
-        background: none;
-        border: none;
-        color: #888;
-        cursor: pointer;
-        font-size: 1rem;
-        padding: 0;
-        display: flex;
-        align-items: center;
-    }
-    .back-btn:hover { color: white; }
-
-    .character-header {
-        text-align: center;
-        margin-bottom: 1rem;
-    }
-
-    .character-header h1 {
-        margin: 0;
-        font-size: 2rem;
-    }
-
-    .inventory-panel {
-        background: #1e1e1e;
-        padding: 1rem;
-        border-radius: 12px;
-        border: 1px solid #333;
-        position: relative;
-    }
-
-    .inventory-list {
-        display: flex;
-        flex-direction: column;
-        gap: 0.5rem;
-    }
-
-    .item {
-        padding: 0.75rem;
-        background: #252525;
-        border-radius: 8px;
-        text-align: left;
-        display: flex;
-        align-items: center;
-        gap: 0.75rem;
-    }
-    
-    .item-icon { font-size: 1.2rem; }
-
-    .item.empty { color: #555; font-style: italic; background: none; padding-left: 0; }
 
     /* Stats & Actions Grid */
     .stats-grid {
@@ -952,7 +970,7 @@
     .xp-bar {
         height: 6px;
         background: #333;
-        border-radius: 3px;
+        border-radius: 4px;
         margin-bottom: 0.5rem;
         overflow: hidden;
     }
@@ -967,7 +985,7 @@
 
     .action-btn {
         width: 100%;
-        padding: 1rem;
+        padding: 0 1rem;
         border: none;
         border-radius: 12px;
         font-weight: bold;
@@ -977,7 +995,7 @@
         display: flex;
         justify-content: center;
         align-items: center;
-        min-height: 56px;
+        height: 56px;
     }
     
     .action-btn:active:not(:disabled) { transform: scale(0.98); }
@@ -995,14 +1013,14 @@
         background: #cf6679;
         color: black;
         padding: 1rem;
-        border-radius: 8px;
+        border-radius: 12px;
         margin-bottom: 1rem;
         text-align: center;
     }
 
     .toast-container {
         position: fixed;
-        top: 20px;
+        top: 100px; /* Adjusted to not overlap header */
         left: 50%;
         transform: translateX(-50%);
         display: flex;
@@ -1034,22 +1052,30 @@
     }
 
     .toast.xp {
-        background: #2563eb; /* Blue for XP */
+        background: #2563eb;
     }
 
     .toast.inventory {
-        background: #e6b800; /* Gold/Yellow for Items */
+        background: #e6b800;
         color: black;
         font-weight: bold;
     }
 
     .toast.error {
-        background: #cf6679; /* Reddish */
+        background: #cf6679;
         color: white;
         font-weight: bold;
     }
 
-    .loading { text-align: center; color: #888; margin-top: 2rem; }
+    .loading {
+        text-align: center;
+        color: #888;
+        display: flex;
+        flex-direction: column;
+        justify-content: center;
+        align-items: center;
+        flex: 1;
+    }
 
     .spinner {
         width: 40px;

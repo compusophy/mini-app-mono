@@ -1,17 +1,17 @@
 {
   "accountAssociation": {
-    "header": "eyJmaWQiOjM2MjEsInR5cGUiOiJjdXN0b2R5Iiwia2V5IjoiMHgyY2Q4NWEwOTMyNjFmNTkyNzA4MDRBNkVBNjk3Q2VBNENlQkVjYWZFIn0",
+    "header": "eyJmaWQiOjM1MDkxMSwidHlwZSI6ImN1c3RvZHkiLCJrZXkiOiIweDJGREVmM0Y0NzBlQ2QyQmM5YTk3NzU2OEM0M0FEMzg2MGMxNjExRDgifQ",
     "payload": "eyJkb21haW4iOiJjb21wdS1za2lsbGVyLWZyb250ZW5kLnZlcmNlbC5hcHAifQ",
-    "signature": "MHgwZmJiYWIwODg3YTU2MDFiNDU3MzVkOTQ5MDRjM2Y1NGUxMzVhZTQxOGEzMWQ5ODNhODAzZmZlYWNlZWMyZDYzNWY4ZTFjYWU4M2NhNTAwOTMzM2FmMTc1NDlmMDY2YTVlOWUwNTljNmZiNDUxMzg0Njk1NzBhODNiNjcyZWJjZTFi"
+    "signature": "/oHhfCMuZl74YCQxiitO9g8ZGQ+vKmVcEJi3CSBXHtU0GobDvYFLIg+9DpeigbTOYquNAgVKYyDAcNGB6F8OYBw="
   },
   "miniapp": {
     "version": "1",
-    "name": "Skiller",
-    "iconUrl": "https://compu-skiller-frontend.vercel.app/icon.png",
+    "name": "SKILLER",
+    "iconUrl": "https://compu-skiller-frontend.vercel.app/skiller-icon-full.jpeg",
     "homeUrl": "https://compu-skiller-frontend.vercel.app",
-    "imageUrl": "https://compu-skiller-frontend.vercel.app/image.png",
-    "buttonTitle": "Play",
-    "splashImageUrl": "https://compu-skiller-frontend.vercel.app/splash.png",
-    "splashBackgroundColor": "#000000"
+    "imageUrl": "https://compu-skiller-frontend.vercel.app/skiller-image.jpeg",
+    "buttonTitle": "PLAY",
+    "splashImageUrl": "https://compu-skiller-frontend.vercel.app/skiller-icon.jpeg",
+    "splashBackgroundColor": "#121212"
   }
 }
