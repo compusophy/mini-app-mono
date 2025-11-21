@@ -11,7 +11,7 @@
     "homeUrl": "https://compu-skiller-frontend.vercel.app",
     "imageUrl": "https://compu-skiller-frontend.vercel.app/skiller-image.jpeg",
     "buttonTitle": "PLAY",
-    "splashImageUrl": "https://compu-skiller-frontend.vercel.app/skiller-icon.jpeg",
+    "splashImageUrl": "https://compu-skiller-frontend.vercel.app/skiller-icon-full.jpeg",
     "splashBackgroundColor": "#121212"
   }
 }

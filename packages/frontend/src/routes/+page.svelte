@@ -7,7 +7,7 @@
   import type { Address } from 'viem';
   import { ABIS } from '$lib/abis';
   import addresses from '$lib/addresses.json';
-  import { Backpack, User, Axe, Pickaxe, Coins, TreeDeciduous, Mountain, ArrowLeft } from '@lucide/svelte';
+  import { Backpack, User, Axe, Pickaxe, Coins, TreeDeciduous, Mountain, ArrowLeft, BarChart3 } from '@lucide/svelte';
 
   const CONTRACT_ADDRESSES = addresses;
 
@@ -37,6 +37,7 @@
   let isInitializing = true;
   let showInventory = false;
   let showProfile = false;
+  let showSkills = false;
   let errorMsg: string | null = null;
   type Toast = {
     id: number;
@@ -433,6 +434,10 @@
                 <button class="square-btn" on:click={() => selectedProfileId = null}>
                     <ArrowLeft size={24} />
                 </button>
+            {:else}
+                <div class="app-icon">
+                    <img src="/skiller-icon-full.jpeg" alt="App Icon" />
+                </div>
             {/if}
         </div>
         <div class="header-center">
@@ -447,6 +452,10 @@
         <div class="header-right">
             {#if selectedProfile}
                 <button class="square-btn" on:click={() => showProfile = !showProfile}>
+                    <User size={24} />
+                </button>
+            {:else if account}
+                 <button class="square-btn" on:click={() => showProfile = !showProfile}>
                     <User size={24} />
                 </button>
             {/if}
@@ -481,7 +490,7 @@
                     {/if}
                     {#if selectedProfile.oreBalance > 0n}
                         <div class="inventory-item">
-                            <span class="item-icon"><Mountain size={32} color="#a8a29e" /></span>
+                            <span class="item-icon"><Mountain size={32} color="#5d4037" /></span>
                             <span class="item-count">{selectedProfile.oreBalance}</span>
                         </div>
                     {/if}
@@ -494,19 +503,65 @@
         </div>
     {/if}
 
-    {#if showProfile && selectedProfile}
+    {#if showSkills && selectedProfile}
+        <div class="modal-backdrop" on:click={() => showSkills = false}>
+            <div class="modal-content skills-modal" on:click|stopPropagation>
+                <div class="skills-list">
+                    <div class="skill-box">
+                        <span class="skill-icon"><TreeDeciduous size={24} color="#4ade80" /></span>
+                        <div class="skill-info">
+                            <div class="skill-header">
+                                <span class="skill-label">Woodcutting</span>
+                                <span class="skill-level">Level {selectedProfile.woodcuttingLevel}</span>
+                            </div>
+                            <div class="xp-progress">
+                                <div class="xp-bar-mini">
+                                    <div class="xp-fill" style="width: {(Number(selectedProfile.woodcuttingXp) / Number(getNextLevelXp(selectedProfile.woodcuttingLevel))) * 100}%"></div>
+                                </div>
+                                <span class="xp-text-mini">{selectedProfile.woodcuttingXp} XP</span>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="skill-box">
+                        <span class="skill-icon"><Mountain size={24} color="#5d4037" /></span>
+                        <div class="skill-info">
+                            <div class="skill-header">
+                                <span class="skill-label">Mining</span>
+                                <span class="skill-level">Level {selectedProfile.miningLevel}</span>
+                            </div>
+                            <div class="xp-progress">
+                                <div class="xp-bar-mini">
+                                    <div class="xp-fill" style="width: {(Number(selectedProfile.miningXp) / Number(getNextLevelXp(selectedProfile.miningLevel))) * 100}%"></div>
+                                </div>
+                                <span class="xp-text-mini">{selectedProfile.miningXp} XP</span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    {/if}
+
+    {#if showProfile}
         <div class="modal-backdrop" on:click={() => showProfile = false}>
             <div class="modal-content profile-modal" on:click|stopPropagation>
                 <div class="profile-info">
-                    <h3>SKILLER #{selectedProfile.id}</h3>
+                    {#if selectedProfile}
+                        <h3>SKILLER #{selectedProfile.id}</h3>
+                    {:else}
+                         <h3>Player Profile</h3>
+                    {/if}
                     <div class="info-row">
                         <span class="label">User:</span>
                         <span class="value" on:click={() => copyToClipboard(account || '')}>{truncateAddress(account || '')}</span>
                     </div>
-                    <div class="info-row">
-                        <span class="label">TBA:</span>
-                        <span class="value" on:click={() => copyToClipboard(selectedProfile.tba)}>{truncateAddress(selectedProfile.tba)}</span>
-                    </div>
+                    {#if selectedProfile}
+                        <div class="info-row">
+                            <span class="label">TBA:</span>
+                            <span class="value" on:click={() => copyToClipboard(selectedProfile.tba)}>{truncateAddress(selectedProfile.tba)}</span>
+                        </div>
+                    {/if}
                 </div>
             </div>
         </div>
@@ -554,69 +609,47 @@
         {:else}
             <!-- Gameplay Screen -->
             <div class="gameplay-screen">
-                <!-- Stats Grid (FABs removed, moved to header/footer) -->
-                <div class="stats-grid">
-                    <div class="stat-column">
-                        <div class="stat-card">
-                            <h4>Woodcutting</h4>
-                            <div class="level">Lvl {selectedProfile.woodcuttingLevel}</div>
-                            <div class="xp-bar">
-                                <div class="xp-fill" style="width: {(Number(selectedProfile.woodcuttingXp) / Number(getNextLevelXp(selectedProfile.woodcuttingLevel))) * 100}%"></div>
-                            </div>
-                            <div class="xp-text">{selectedProfile.woodcuttingXp} / {getNextLevelXp(selectedProfile.woodcuttingLevel)} XP</div>
-                        </div>
-                        
+                <!-- Actions Container -->
+                <div class="actions-container">
+                    <button 
+                        class="action-btn wood" 
+                        disabled={selectedProfile.axeBalance === 0n || !!actionLoading}
+                        on:click={() => handleAction('chop', selectedProfile.id)}
+                    >
+                        {#if actionLoading === 'chop'}
+                            <div class="spinner-small"></div>
+                        {:else if selectedProfile.axeBalance === 0n}
+                            Need Axe
+                        {:else}
+                            <TreeDeciduous size={20} /> Chop Tree
+                        {/if}
+                    </button>
+
+                    {#if selectedProfile.pickaxeBalance > 0n}
                         <button 
-                            class="action-btn wood" 
-                            disabled={selectedProfile.axeBalance === 0n || !!actionLoading}
-                            on:click={() => handleAction('chop', selectedProfile.id)}
+                            class="action-btn ore" 
+                            disabled={!!actionLoading}
+                            on:click={() => handleAction('mine', selectedProfile.id)}
                         >
-                            {#if actionLoading === 'chop'}
+                            {#if actionLoading === 'mine'}
                                 <div class="spinner-small"></div>
-                            {:else if selectedProfile.axeBalance === 0n}
-                                Need Axe
                             {:else}
-                                Chop Tree
+                                <Mountain size={20} /> Mine Ore
                             {/if}
                         </button>
-                    </div>
-
-                    <div class="stat-column">
-                        <div class="stat-card">
-                            <h4>Mining</h4>
-                            <div class="level">Lvl {selectedProfile.miningLevel}</div>
-                            <div class="xp-bar">
-                                <div class="xp-fill" style="width: {(Number(selectedProfile.miningXp) / Number(getNextLevelXp(selectedProfile.miningLevel))) * 100}%"></div>
-                            </div>
-                            <div class="xp-text">{selectedProfile.miningXp} / {getNextLevelXp(selectedProfile.miningLevel)} XP</div>
-                        </div>
-
-                        {#if selectedProfile.pickaxeBalance > 0n}
-                            <button 
-                                class="action-btn ore" 
-                                disabled={!!actionLoading}
-                                on:click={() => handleAction('mine', selectedProfile.id)}
-                            >
-                                {#if actionLoading === 'mine'}
-                                    <div class="spinner-small"></div>
-                                {:else}
-                                    Mine Ore
-                                {/if}
-                            </button>
-                        {:else}
-                            <button 
-                                class="action-btn claim"
-                                disabled={!!actionLoading}
-                                on:click={() => handleAction('claim', selectedProfile.id)}
-                            >
-                                {#if actionLoading === 'claim'}
-                                    <div class="spinner-small"></div>
-                                {:else}
-                                    Claim Pickaxe
-                                {/if}
-                            </button>
-                        {/if}
-                    </div>
+                    {:else}
+                        <button 
+                            class="action-btn claim"
+                            disabled={!!actionLoading}
+                            on:click={() => handleAction('claim', selectedProfile.id)}
+                        >
+                            {#if actionLoading === 'claim'}
+                                <div class="spinner-small"></div>
+                            {:else}
+                                <Pickaxe size={20} /> Claim Pickaxe
+                            {/if}
+                        </button>
+                    {/if}
                 </div>
             </div>
         {/if}
@@ -635,7 +668,11 @@
             {/if}
         {:else}
             <div class="footer-left"></div>
-            <div class="footer-center"></div>
+            <div class="footer-center">
+                <button class="square-btn" on:click={() => showSkills = !showSkills}>
+                    <BarChart3 size={24} />
+                </button>
+            </div>
             <div class="footer-right">
                 <button class="square-btn" on:click={() => showInventory = !showInventory}>
                     <Backpack size={24} />
@@ -679,6 +716,20 @@
     footer {
         border-bottom: none;
         border-top: 1px solid #222;
+    }
+
+    .app-icon {
+        width: 56px;
+        height: 56px;
+        border-radius: 16px;
+        overflow: hidden;
+        border: 1px solid #333;
+    }
+
+    .app-icon img {
+        width: 100%;
+        height: 100%;
+        object-fit: cover;
     }
 
     .header-left, .header-right, .footer-left, .footer-right {
@@ -779,7 +830,83 @@
         top: 90px; /* Below the header */
         right: 20px;
     }
+
+    .skills-modal {
+        bottom: 90px; /* Above the footer */
+        left: 50%;
+        transform: translateX(-50%);
+        min-width: 320px;
+    }
     
+    .skills-list {
+        display: flex;
+        flex-direction: column;
+        gap: 0.75rem;
+    }
+
+    .skill-box {
+        background: #252525;
+        border: 1px solid #333;
+        border-radius: 12px;
+        padding: 0.75rem;
+        display: flex;
+        align-items: center;
+        gap: 0.75rem;
+    }
+
+    .skill-icon {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        min-width: 32px;
+    }
+
+    .skill-info {
+        display: flex;
+        flex-direction: column;
+        flex: 1;
+        gap: 0.25rem;
+    }
+
+    .skill-header {
+        display: flex;
+        justify-content: space-between;
+        align-items: baseline;
+    }
+
+    .skill-label {
+        font-size: 0.8rem;
+        color: #aaa;
+        font-weight: 600;
+    }
+
+    .skill-level {
+        font-size: 0.9rem;
+        font-weight: bold;
+        color: white;
+    }
+
+    .xp-progress {
+        display: flex;
+        align-items: center;
+        gap: 0.5rem;
+    }
+
+    .xp-bar-mini {
+        flex: 1;
+        height: 4px;
+        background: #333;
+        border-radius: 2px;
+        overflow: hidden;
+    }
+
+    .xp-text-mini {
+        font-size: 0.7rem;
+        color: #666;
+        min-width: 40px;
+        text-align: right;
+    }
+
     .profile-info h3 {
         margin: 0 0 1rem 0;
         font-size: 1.2rem;
@@ -939,19 +1066,18 @@
         flex-direction: column;
         gap: 1.5rem;
         padding-top: 1rem;
+        flex: 1;
+        justify-content: center;
+        align-items: center;
     }
 
-    /* Stats & Actions Grid */
-    .stats-grid {
-        display: grid;
-        grid-template-columns: 1fr 1fr;
-        gap: 1rem;
-    }
-
-    .stat-column {
+    /* Actions Container */
+    .actions-container {
         display: flex;
         flex-direction: column;
         gap: 1rem;
+        width: 100%;
+        max-width: 280px;
     }
 
     .stat-card {
@@ -996,6 +1122,7 @@
         justify-content: center;
         align-items: center;
         height: 56px;
+        gap: 0.75rem;
     }
     
     .action-btn:active:not(:disabled) { transform: scale(0.98); }
