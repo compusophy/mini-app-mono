@@ -490,12 +490,20 @@
         await new Promise(r => setTimeout(r, 2000));
         
         const prevXp = action === 'chop' ? selectedProfile?.woodcuttingXp : selectedProfile?.miningXp;
+        const prevLevel = action === 'chop' ? selectedProfile?.woodcuttingLevel : selectedProfile?.miningLevel;
+
         await loadProfiles(true);
         leaderboardProfiles = []; // Force refresh of leaderboard to reflect new stats
         
         if (selectedProfileId) {
             const updatedProfile = profiles.find(p => p.id === selectedProfileId);
             if (updatedProfile) {
+                const currentLevel = action === 'chop' ? updatedProfile.woodcuttingLevel : updatedProfile.miningLevel;
+                
+                if ((currentLevel || 0n) > (prevLevel || 0n)) {
+                    showToast(`LEVEL UP! You are now level ${currentLevel}!`, 'default');
+                }
+
                 if (action === 'chop') {
                     const gained = (updatedProfile.woodcuttingXp || 0n) - (prevXp || 0n);
                     if (gained > 0n) showToast(`+${gained} Woodcutting XP`, 'woodcutting-xp');
@@ -710,7 +718,7 @@
                     {/if}
                     {#if selectedProfile.axeBalance > 0n}
                         <div class="inventory-item">
-                            <span class="item-icon"><Axe size={32} color="#9ca3af" /></span>
+                            <span class="item-icon"><Axe size={32} color="#cd7f32" /></span>
                         </div>
                     {/if}
                     {#if selectedProfile.woodBalance > 0n}
@@ -721,7 +729,7 @@
                     {/if}
                     {#if selectedProfile.pickaxeBalance > 0n}
                         <div class="inventory-item">
-                            <span class="item-icon"><Pickaxe size={32} color="#9ca3af" /></span>
+                            <span class="item-icon"><Pickaxe size={32} color="#cd7f32" /></span>
                         </div>
                     {/if}
                     {#if selectedProfile.oreBalance > 0n}
