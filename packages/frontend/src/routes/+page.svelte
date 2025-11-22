@@ -254,7 +254,7 @@
       loadLeaderboard();
   }
 
-  $: sortedLeaderboard = [...leaderboardProfiles].sort((a, b) => {
+  $: fullSortedLeaderboard = [...leaderboardProfiles].sort((a, b) => {
       if (leaderboardTab === 'overall') {
           const totalLevelA = (a.miningLevel || 0n) + (a.woodcuttingLevel || 0n);
           const totalLevelB = (b.miningLevel || 0n) + (b.woodcuttingLevel || 0n);
@@ -270,7 +270,11 @@
       } else {
           return Number((b.miningXp || 0n) - (a.miningXp || 0n));
       }
-  }).slice(0, 10);
+  });
+
+  $: sortedLeaderboard = fullSortedLeaderboard.slice(0, 10);
+  
+  $: userRank = selectedProfileId !== null ? fullSortedLeaderboard.findIndex(p => p.id === selectedProfileId) + 1 : 0;
 
   async function loadProfiles(silent = false) {
     if (!account) return;
@@ -649,6 +653,13 @@
                         <Mountain size={18} color="#5d4037" />
                     </button>
                 </div>
+                
+                {#if selectedProfile && userRank > 0}
+                    <div class="user-rank-display">
+                        <span class="rank-label">Your Rank:</span>
+                        <span class="rank-value">#{userRank}</span>
+                    </div>
+                {/if}
                 
                 <div class="leaderboard-list">
                     {#if isLoadingLeaderboard && leaderboardProfiles.length === 0}
@@ -1097,6 +1108,27 @@
         display: flex;
         background: #252525;
         border-bottom: 1px solid #333;
+    }
+
+    .user-rank-display {
+        display: flex;
+        justify-content: center;
+        align-items: center;
+        padding: 0.75rem;
+        background: #222;
+        border-bottom: 1px solid #333;
+        gap: 0.5rem;
+    }
+    
+    .rank-label {
+        color: #888;
+        font-size: 0.9rem;
+    }
+    
+    .rank-value {
+        color: #fbbf24;
+        font-weight: bold;
+        font-size: 1.1rem;
     }
 
     .tab-btn {
