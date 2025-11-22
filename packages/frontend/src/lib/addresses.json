@@ -1,10 +1,17 @@
 {
   "ERC6551Registry": "0xd88ff2769292646d65c3a8e9dbcbf341564f76f7",
   "ERC6551Account": "0x7539d350b54fa05aa221ec2c541c5509230d4abc",
+  
   "SkillerProfile": "0x49e8f6ae8829c59fff4c1f14363b8fc9f048892d",
   "SkillerItems": "0xaa00c50ccb85226c854d1f50019d973d9e5d5c61",
   "SkillerGold": "0x9a772614df1911f030414ae9f1c2a6d20c51170b",
   "SkillerDescriptor": "0x7e7630dd94f789c42c57dcec690342512577226d",
   "SkillerChopping": "0xcc7c9077cfdae601cb38161800316b62857845d0",
-  "SkillerMining": "0x792a1809d0e49d5dda18cfab6b95afae646ed56d"
+  "SkillerMining": "0x792a1809d0e49d5dda18cfab6b95afae646ed56d",
+
+  "SkillerProfileV2": "0xbECD4F7B2e0435A0494CefAB3474255eA1f5712a",
+  "SkillerItemsV2": "0xe25008892D32d28Fd7f25C00AB2aA55056731C0A",
+  "Diamond": "0xCe3d9618a559A76bBF1A6289dc1224FF9662E24D",
+  "SkillerDescriptorV2": "0xeF916b10e43A5A3F76bCB09a6Cf5dEaa2cBFA599",
+  "SkillerMigration": "0x207A6F6c54De8527496C5461b9AbB4D85D530052"
 }
