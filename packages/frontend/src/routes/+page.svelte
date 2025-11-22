@@ -53,6 +53,11 @@
   
   let actionLoading: string | null = null; // 'chop', 'mine', 'claim'
 
+  // Burn Logic
+  let showBurnConfirmation = false;
+  let burnConfirmationInput = '';
+  let isBurning = false;
+
   // Derived
   $: selectedProfile = selectedProfileId !== null ? profiles.find(p => p.id === selectedProfileId) : null;
 
@@ -549,6 +554,50 @@
         loading = false;
     }
   }
+
+  async function burnCharacter() {
+    if (!selectedProfile || !account) return;
+    if (burnConfirmationInput.trim().toLowerCase() !== 'yes') {
+        showToast('Please type "yes" to confirm', 'error');
+        return;
+    }
+
+    isBurning = true;
+    try {
+        const walletClient = await getWalletClient(config);
+        const publicClient = getPublicClient(config);
+        if (!walletClient || !publicClient) throw new Error("Wallet not connected");
+
+        const { request } = await publicClient.simulateContract({
+            account,
+            address: CONTRACT_ADDRESSES.SkillerProfile as Address,
+            abi: ABIS.SkillerProfile,
+            functionName: 'transferFrom',
+            args: [account, '0x000000000000000000000000000000000000dEaD', selectedProfile.id]
+        });
+        
+        const hash = await walletClient.writeContract(request);
+        showToast('Burning character...', 'default');
+        await publicClient.waitForTransactionReceipt({ hash });
+        
+        showToast('Character burned successfully', 'default');
+        
+        showBurnConfirmation = false;
+        showProfile = false;
+        selectedProfileId = null;
+        loadProfiles();
+    } catch (e: any) {
+        console.error("Burn error:", e);
+        if (e.message?.includes("User rejected") || e.message?.includes("User denied")) {
+            showToast("Transaction Cancelled", 'error');
+        } else {
+            showToast(`Burn failed: ${e.message}`, 'error');
+        }
+    } finally {
+        isBurning = false;
+        burnConfirmationInput = '';
+    }
+  }
 </script>
 
 <div class="app-container">
@@ -737,7 +786,34 @@
                             <span class="label">TBA:</span>
                             <span class="value" on:click={() => copyToClipboard(selectedProfile.tba)}>{truncateAddress(selectedProfile.tba)}</span>
                         </div>
+                        <div class="burn-section">
+                            <button class="burn-trigger-btn" on:click={() => showBurnConfirmation = true}>Burn Character</button>
+                        </div>
                     {/if}
+                </div>
+            </div>
+        </div>
+    {/if}
+
+    {#if showBurnConfirmation}
+        <div class="modal-backdrop" on:click={() => showBurnConfirmation = false}>
+            <div class="modal-content burn-modal" on:click|stopPropagation>
+                <h3 class="text-danger">Burn Character?</h3>
+                <p class="burn-warning">This action is irreversible. Your character and all its progress/items will be lost forever.</p>
+                <div class="input-group">
+                    <label for="burn-confirm">Type <strong>yes</strong> to confirm:</label>
+                    <input id="burn-confirm" type="text" bind:value={burnConfirmationInput} placeholder="yes" class="confirm-input" />
+                </div>
+                
+                <div class="modal-actions">
+                    <button class="cancel-btn" on:click={() => showBurnConfirmation = false} disabled={isBurning}>Cancel</button>
+                    <button class="confirm-burn-btn" on:click={burnCharacter} disabled={isBurning || burnConfirmationInput.toLowerCase() !== 'yes'}>
+                        {#if isBurning}
+                            <div class="spinner-small"></div>
+                        {:else}
+                            Burn Forever
+                        {/if}
+                    </button>
                 </div>
             </div>
         </div>
@@ -1238,6 +1314,102 @@
         color: white;
         text-decoration: underline;
     }
+
+    .burn-section {
+        margin-top: 1.5rem;
+        display: flex;
+        justify-content: center;
+        border-top: 1px solid #333;
+        padding-top: 1rem;
+    }
+
+    .burn-trigger-btn {
+        background: rgba(207, 102, 121, 0.1);
+        color: #cf6679;
+        border: 1px solid #cf6679;
+        padding: 0.5rem 1rem;
+        border-radius: 8px;
+        cursor: pointer;
+        font-size: 0.85rem;
+        transition: all 0.2s;
+    }
+
+    .burn-trigger-btn:hover {
+        background: #cf6679;
+        color: black;
+    }
+
+    .burn-modal {
+        z-index: 110; /* Higher than profile modal */
+        max-width: 280px;
+        top: 50%;
+        left: 50%;
+        transform: translate(-50%, -50%);
+    }
+
+    .text-danger {
+        color: #cf6679;
+        margin-top: 0;
+    }
+
+    .burn-warning {
+        font-size: 0.9rem;
+        color: #aaa;
+        margin-bottom: 1rem;
+    }
+
+    .input-group {
+        margin-bottom: 1.5rem;
+        display: flex;
+        flex-direction: column;
+        gap: 0.5rem;
+    }
+
+    .confirm-input {
+        background: #252525;
+        border: 1px solid #444;
+        padding: 0.75rem;
+        border-radius: 8px;
+        color: white;
+        font-size: 1rem;
+    }
+
+    .confirm-input:focus {
+        outline: none;
+        border-color: #cf6679;
+    }
+
+    .modal-actions {
+        display: flex;
+        gap: 0.75rem;
+    }
+
+    .modal-actions button {
+        flex: 1;
+        padding: 0.75rem;
+        border-radius: 8px;
+        cursor: pointer;
+        font-weight: bold;
+        border: none;
+        transition: opacity 0.2s;
+        display: flex;
+        justify-content: center;
+        align-items: center;
+        height: 44px;
+    }
+
+    .cancel-btn {
+        background: #333;
+        color: white;
+    }
+    .cancel-btn:hover:not(:disabled) { background: #444; }
+
+    .confirm-burn-btn {
+        background: #cf6679;
+        color: black;
+    }
+    .confirm-burn-btn:hover:not(:disabled) { background: #e57373; }
+    .confirm-burn-btn:disabled { opacity: 0.5; cursor: not-allowed; }
 
     .inventory-grid {
         display: grid;
