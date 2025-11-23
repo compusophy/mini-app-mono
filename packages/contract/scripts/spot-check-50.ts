@@ -3,7 +3,7 @@ import { ethers } from "hardhat";
 import addresses from "../../frontend/src/lib/addresses.json";
 
 async function main() {
-    const tokenId = 254;
+    const tokenId = 50;
     const diamondAddr = addresses.Diamond;
     const newItemsAddr = addresses.SkillerItemsV2;
     const newProfileAddr = addresses.SkillerProfileV2;
@@ -87,5 +87,4 @@ main()
         console.error(error);
         process.exit(1);
     });
-
 
