@@ -1,5 +1,6 @@
 import { HardhatUserConfig } from "hardhat/config";
 import "@nomicfoundation/hardhat-toolbox";
+import "@openzeppelin/hardhat-upgrades";
 import * as path from "path";
 import * as fs from "fs";
 
@@ -60,10 +61,10 @@ const config: HardhatUserConfig = {
   },
   networks: {
     "base-mainnet": {
-      url: "https://mainnet.base.org",
+      url: "https://base.publicnode.com",
       accounts: process.env.PRIVATE_KEY ? [process.env.PRIVATE_KEY] : [],
       chainId: 8453,
-      gasPrice: 40000000, // Increase to 0.04 gwei to beat stuck txs
+      gasPrice: 300000000, // 0.3 gwei
     },
   },
 };

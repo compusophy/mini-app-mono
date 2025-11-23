@@ -9,6 +9,8 @@
     "deploy:contract": "npm run deploy -w packages/contract",
     "dev:frontend": "npm run dev -w packages/frontend",
     "sync:abi": "node scripts/sync-abi.js"
+  },
+  "dependencies": {
+    "@openzeppelin/contracts-upgradeable": "^5.4.0"
   }
 }
-

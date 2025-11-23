@@ -4,7 +4,7 @@
   import { sdk } from '@farcaster/miniapp-sdk';
   import { config } from '$lib/wagmi';
   import { connect, getAccount, watchAccount, getWalletClient, getPublicClient } from '@wagmi/core';
-  import type { Address } from 'viem';
+  import { encodeFunctionData, type Address } from 'viem';
   import { ABIS } from '$lib/abis';
   import addresses from '$lib/addresses.json';
   import { Backpack, User, Axe, Pickaxe, Coins, TreeDeciduous, Mountain, ArrowLeft, BarChart3, Trophy, RefreshCw, Hammer, Trash2, Copy, HelpCircle } from '@lucide/svelte';
@@ -61,8 +61,10 @@
 
   // Burn Logic
   let showBurnConfirmation = false;
+  let showFundConfirmation = false;
   let burnConfirmationInput = '';
   let isBurning = false;
+  let isFunding = false;
 
   let selectedItem: { id: bigint, name: string, balance: bigint } | null = null;
 
@@ -563,11 +565,7 @@
   async function deleteItem() {
       if (!selectedItem || !account || !selectedProfile) return;
       
-      // Confirmation could be added here or handled by the UI state
-      if (burnConfirmationInput !== 'DELETE') { // Reuse burn input or separate? Let's use a simple check or just require confirm.
-          // Simplified: Just proceed for now as per "delete button" request, but safety is good.
-          // Let's assume the user tapped "Delete" on the item detail view.
-      }
+      // Confirmation handled by UI state
 
       actionLoading = 'delete';
       try {
@@ -576,60 +574,108 @@
         
         const address = selectedProfile.version === 'v1' ? CONTRACT_ADDRESSES.SkillerItems : CONTRACT_ADDRESSES.SkillerItemsV2;
         const abi = selectedProfile.version === 'v1' ? ABIS.SkillerItems : ABIS.SkillerItemsV2;
-        
-        // For TBA to burn items, it needs to interact with the contract.
-        // But the TBA is a contract itself. We, the user, control the TBA.
-        // We need to execute a transaction FROM the TBA to call burn on the items contract.
-        // OR, if the Items contract allows burning from authorized operators?
-        // The Items V2 contract has `burn(account, id, amount) public onlyMinter`.
-        // Wait, `onlyMinter`? That means users can't burn their own items directly using `burn`?
-        // Standard ERC1155Burnable usually has `burn(account, id, value)`.
-        // If SkillerItemsV2 only allows minters to burn, then users can't burn.
-        // BUT, standard ERC1155 has safeTransferFrom. We can send to dead address.
-        
         const deadAddress = '0x000000000000000000000000000000000000dEaD';
-        
-        // To do this from the TBA, we need to use the ERC6551Account interface to execute a call.
-        // We are logged in as the owner of the Profile (NFT), which controls the TBA.
-        // So we call `execute` on the TBA contract.
         
         const tbaAddress = selectedProfile.tba;
         const itemsAddr = address;
         
+        // Verify Code exists at TBA
+        const code = await publicClient.getBytecode({ address: tbaAddress });
+        if (!code || code === '0x') {
+            showToast("Activating Account...", 'default');
+            try {
+                const chainId = await publicClient.getChainId();
+                const profileAddress = selectedProfile.version === 'v1' 
+                    ? CONTRACT_ADDRESSES.SkillerProfile 
+                    : CONTRACT_ADDRESSES.SkillerProfileV2;
+
+                const { request: deployReq } = await publicClient.simulateContract({
+                    account,
+                    address: CONTRACT_ADDRESSES.ERC6551Registry as Address,
+                    abi: ABIS.ERC6551Registry,
+                    functionName: 'createAccount',
+                    args: [
+                        CONTRACT_ADDRESSES.ERC6551Account as Address,
+                        0n, // salt
+                        BigInt(chainId),
+                        profileAddress as Address,
+                        selectedProfile.id
+                    ]
+                });
+                const deployHash = await walletClient.writeContract(deployReq);
+                await publicClient.waitForTransactionReceipt({ hash: deployHash });
+                
+                // Wait a moment for the node to index the code
+                await new Promise(r => setTimeout(r, 2000));
+                showToast("Account Activated!");
+            } catch (deployError: any) {
+                console.error("Activation failed:", deployError);
+                throw new Error("Failed to activate account: " + deployError.message);
+            }
+        }
+        
+        // Re-check Balance on Chain
+        const currentBalance = await publicClient.readContract({
+            address: itemsAddr as Address,
+            abi,
+            functionName: 'balanceOf',
+            args: [tbaAddress, selectedItem.id]
+        }) as bigint;
+
+        if (currentBalance === 0n) {
+             showToast("Item already deleted or not found.", 'inventory');
+             selectedItem = null;
+             await loadProfiles(true);
+             return;
+        }
+
+        const amountToBurn = currentBalance; // Burn everything found
+
         // Encode the ERC1155 safeTransferFrom call
-        // safeTransferFrom(from, to, id, amount, data)
-        // function signature: 0xf242432a
-        
-        // We can use encodeFunctionData from viem
-        const { encodeFunctionData } = await import('viem');
-        
         const transferData = encodeFunctionData({
             abi: abi,
             functionName: 'safeTransferFrom',
-            args: [tbaAddress, deadAddress, selectedItem.id, selectedItem.balance, '0x']
+            args: [tbaAddress, deadAddress, selectedItem.id, amountToBurn, '0x']
         });
         
+        // Check TBA native balance for gas
+        const tbaBalance = await publicClient.getBalance({ address: tbaAddress });
+        
+        if (tbaBalance === 0n) {
+             showFundConfirmation = true;
+             actionLoading = null; 
+             return;
+        }
+
         // Execute from TBA
-        // execute(to, value, data, operation)
-        const { request } = await publicClient.simulateContract({
-            account,
-            address: tbaAddress,
-            abi: ABIS.ERC6551Account,
-            functionName: 'execute',
-            args: [itemsAddr, 0n, transferData, 0n] // 0 = call
-        });
-        
-        const hash = await walletClient.writeContract(request);
-        showToast(`Deleting all ${selectedItem.name}...`);
-        await publicClient.waitForTransactionReceipt({ hash });
-        
-        showToast('Item Deleted', 'inventory');
-        selectedItem = null; // Close detail
-        await loadProfiles(true);
+        try {
+             const { request } = await publicClient.simulateContract({
+                account,
+                address: tbaAddress,
+                abi: ABIS.ERC6551Account,
+                functionName: 'execute',
+                args: [itemsAddr, 0n, transferData, 0n] // 0 = call
+            });
+            
+            const hash = await walletClient.writeContract(request);
+            showToast(`Deleting all ${selectedItem.name}...`);
+            await publicClient.waitForTransactionReceipt({ hash });
+            
+            showToast('Item Deleted', 'inventory');
+            selectedItem = null; 
+            await loadProfiles(true);
+
+        } catch (execError: any) {
+             console.error("Execution failed details:", execError);
+             if (execError.message?.includes("Cannot read properties of null")) {
+                 throw new Error("RPC Error: Failed to simulate execution. Try again or check console.");
+             }
+             throw new Error(`Execution failed: ${execError.shortMessage || execError.message}`);
+        }
         
       } catch (e: any) {
           console.error("Delete failed:", e);
-          showToast("Failed to delete item", 'error');
+          showToast(`Failed: ${e.message}`, 'error');
       } finally {
           actionLoading = null;
       }
@@ -702,6 +748,30 @@
     }
   }
   
+  async function fundCharacter() {
+        if (!selectedProfile || !account) return;
+        isFunding = true;
+        try {
+            const walletClient = await getWalletClient(config);
+            const publicClient = getPublicClient(config);
+            
+            showToast("Funding Character...", 'default');
+            const tx = await walletClient.sendTransaction({
+                to: selectedProfile.tba,
+                value: BigInt(500000000000000) // 0.0005 ETH
+            });
+            await publicClient.waitForTransactionReceipt({ hash: tx });
+            showToast("Character Funded!");
+            showFundConfirmation = false;
+            // Optionally retry delete logic automatically? 
+            // User can just click delete again for now.
+        } catch (fundError: any) {
+            console.error("Funding failed:", fundError);
+            showToast("Funding failed", 'error');
+        } finally {
+            isFunding = false;
+        }
+  }
   async function burnCharacter() {
         if (!selectedProfile || !account || burnConfirmationInput !== 'BURN') return;
         isBurning = true;
@@ -711,16 +781,7 @@
             const address = selectedProfile.version === 'v1' ? CONTRACT_ADDRESSES.SkillerProfile : CONTRACT_ADDRESSES.SkillerProfileV2;
             const abi = selectedProfile.version === 'v1' ? ABIS.SkillerProfile : ABIS.SkillerProfileV2;
 
-            // Correct burn logic: it should call 'burn' on the Profile contract.
-            // If V2 uses a different mechanism (e.g. Diamond), we might need to adjust.
-            // SkillerProfileV2 inherits ERC721BurnableUpgradeable? Or implements it?
-            // Checking ABI...
-            
-            // If ABIS.SkillerProfileV2 doesn't have burn, we might need to verify.
-            // Assuming it does based on previous usage.
-            
             // Use transferFrom to burn (send to dead address) if burn() is not supported
-            // Dead address: 0x000000000000000000000000000000000000dEaD
             const deadAddress = '0x000000000000000000000000000000000000dEaD';
             
             const { request } = await publicClient.simulateContract({
@@ -863,6 +924,29 @@
             </div>
         </div>
     {/if}
+
+    <!-- Fund Confirmation Modal -->
+    {#if showFundConfirmation}
+        <div class="modal-backdrop">
+            <div class="modal-content burn-modal"> <!-- Reuse burn modal style for simplicity or create new class -->
+                <h3>Fund Character</h3>
+                <p style="font-size: 0.9rem; color: #aaa; margin-bottom: 1rem;">
+                    Your character (TBA) needs a small amount of ETH to pay for gas to delete items.
+                </p>
+                <div class="modal-actions">
+                    <button class="cancel-btn" on:click={() => showFundConfirmation = false}>Cancel</button>
+                    <button 
+                        class="confirm-burn-btn" 
+                        style="background: #2563eb; color: white;"
+                        disabled={isFunding}
+                        on:click={fundCharacter}
+                    >
+                        {#if isFunding}<div class="spinner-small"></div>{:else}Send 0.0005 ETH{/if}
+                    </button>
+                </div>
+            </div>
+        </div>
+    {/if}
     
     <!-- Inventory Modal -->
     {#if showInventory}
@@ -871,16 +955,16 @@
                  <!-- Item Detail View -->
                  {#if selectedItem}
                     <div class="item-detail">
-                        <div class="detail-header">
+                        <div class="detail-header" style="justify-content: space-between;">
                             <button class="back-btn" on:click={() => selectedItem = null}><ArrowLeft size={20}/></button>
                             <h3>{selectedItem.name}</h3>
                             <div style="width: 20px;"></div> <!-- Spacer to center title -->
                         </div>
-                        <div class="detail-content">
+                        <div class="detail-content" style="gap: 1rem;">
                             <div class="large-icon">
                                 {#if selectedItem.name.includes('Gold')} <Coins size={48} color="#fbbf24"/>
                                 {:else if selectedItem.name.includes('Log')} <TreeDeciduous size={48} color="#4ade80"/>
-                                {:else if selectedItem.name.includes('Iron Ore')} <Mountain size={48} color="#8d6e63"/>
+                                {:else if selectedItem.name.includes('Iron Ore')} <Mountain size={48} color="#b0bec5"/>
                                 {:else if selectedItem.name.includes('Ore')} <Mountain size={48} color="#b0bec5"/>
                                 {:else if selectedItem.name.includes('Iron Axe')} <Axe size={48} color="#b0bec5"/>
                                 {:else if selectedItem.name.includes('Axe')} <Axe size={48} color="#cd7f32"/>
@@ -925,7 +1009,7 @@
                          <!-- V2: Iron Ore/Coal -->
                         {#if (selectedProfile.ironOreBalance || 0n) > 0n}
                              <div class="inventory-item" title="Iron Ore" on:click={() => selectedItem = { id: 301n, name: 'Iron Ore', balance: selectedProfile?.ironOreBalance || 0n }}>
-                                <div class="item-icon" style="color: #8d6e63"><Mountain size={24}/></div>
+                                <div class="item-icon"><Mountain size={24} color="#b0bec5"/></div>
                                 <div class="item-count">{selectedProfile.ironOreBalance}</div>
                             </div>
                         {/if}
@@ -1420,12 +1504,12 @@
     .actions-container { display: flex; flex-direction: column; gap: 1rem; width: 100%; max-width: 280px; }
     .action-btn { width: 100%; padding: 0 1rem; border: none; border-radius: 12px; font-weight: bold; font-size: 1rem; cursor: pointer; height: 56px; display: flex; justify-content: center; align-items: center; gap: 0.75rem; }
     .action-btn.wood { background: #2e7d32; color: white; }
-    .action-btn.ore { background: #8d6e63; color: white; }
+    .action-btn.ore { background: #b0bec5; color: black; }
     .action-btn.claim { background: #0288d1; color: white; }
     .error-banner { background: #cf6679; color: black; padding: 1rem; border-radius: 12px; margin-bottom: 1rem; text-align: center; }
     /* purple theme for xp */
     .toast.woodcutting-xp { background: #252525; border-left: 4px solid #4ade80; color: #4ade80; }
-    .toast.mining-xp { background: #252525; border-left: 4px solid #8d6e63; color: #8d6e63; }
+    .toast.mining-xp { background: #252525; border-left: 4px solid #b0bec5; color: #b0bec5; }
     .toast.item-received { background: #252525; border-left: 4px solid #ffd700; color: #ffd700; }
     .toast-container {
         position: absolute;
