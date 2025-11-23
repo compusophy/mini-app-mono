@@ -1192,6 +1192,18 @@
     {#if showProfile}
         <div class="modal-backdrop" on:click={() => showProfile = false}>
             <div class="modal-content profile-modal" on:click|stopPropagation>
+                <button 
+                    class="refresh-profile-btn" 
+                    on:click={refreshCurrentProfile}
+                    disabled={!!actionLoading}
+                    title="Refresh Balances"
+                >
+                    {#if actionLoading === 'refresh-profile'}
+                        <div class="spinner-mini"></div>
+                    {:else}
+                        <RefreshCw size={16} />
+                    {/if}
+                </button>
                 <div class="profile-info">
                     {#if selectedProfile}
                         <h3>SKILLER #{selectedProfile.id}</h3>
@@ -2249,4 +2261,40 @@
     .migrate-btn { background: #2563eb; color: white; border: none; padding: 0.5rem 1rem; border-radius: 6px; font-weight: bold; cursor: pointer; display: flex; align-items: center; justify-content: center; gap: 0.5rem; width: 100%; }
     .v1-migration-prompt { text-align: center; }
     .migrate-btn-large { background: #2563eb; color: white; border: none; padding: 1rem 2rem; border-radius: 12px; font-weight: bold; font-size: 1.2rem; cursor: pointer; }
+
+    .refresh-profile-btn {
+        position: absolute;
+        top: 12px;
+        right: 12px;
+        background: transparent;
+        border: 1px solid #333;
+        color: #888;
+        width: 32px;
+        height: 32px;
+        border-radius: 8px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        cursor: pointer;
+        padding: 0;
+        transition: all 0.2s;
+    }
+    .refresh-profile-btn:hover {
+        background: #2a2a2a;
+        color: white;
+        border-color: #555;
+    }
+    .refresh-profile-btn:disabled {
+        opacity: 0.5;
+        cursor: not-allowed;
+    }
+
+    .spinner-mini {
+        width: 14px;
+        height: 14px;
+        border: 2px solid rgba(255,255,255,0.1);
+        border-top-color: white;
+        border-radius: 50%;
+        animation: spin 1s linear infinite;
+    }
 </style>
