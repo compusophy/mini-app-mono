@@ -7,7 +7,7 @@
   import { encodeFunctionData, type Address } from 'viem';
   import { ABIS } from '$lib/abis';
   import addresses from '$lib/addresses.json';
-  import { Backpack, User, Axe, Pickaxe, Coins, TreeDeciduous, Mountain, ArrowLeft, BarChart3, Trophy, RefreshCw, Hammer, Trash2, Copy, HelpCircle } from '@lucide/svelte';
+  import { Backpack, User, Axe, Pickaxe, Coins, TreeDeciduous, Mountain, ArrowLeft, BarChart3, Trophy, RefreshCw, Hammer, Trash2, Copy, HelpCircle, Send } from '@lucide/svelte';
 
   const CONTRACT_ADDRESSES = addresses;
 
@@ -30,10 +30,12 @@
     ironPickaxeBalance?: bigint;
     ironOreBalance?: bigint;
     coalOreBalance?: bigint;
+    tbaBalance?: bigint; // Native ETH balance of TBA
   };
 
   // State
   let account: Address | null = null;
+  let accountBalance: bigint = 0n;
   let profiles: Profile[] = [];
   let selectedProfileId: bigint | null = null;
   
@@ -46,10 +48,15 @@
   let showProfile = false;
   let showSkills = false;
   let showCrafting = false;
+  let showSendModal = false;
 
   let errorMsg: string | null = null;
+  
+  // Send Logic
+  let sendRecipientId = '';
+  let sendAmount = '1';
 
-    type Toast = {
+  type Toast = {
     id: number;
     msg: string;
     type: 'default' | 'woodcutting-xp' | 'mining-xp' | 'inventory' | 'error' | 'item-received';
@@ -63,10 +70,11 @@
   let showBurnConfirmation = false;
   let showFundConfirmation = false;
   let burnConfirmationInput = '';
-  let isBurning = false;
-  let isFunding = false;
+    let isBurning = false;
+    let isFunding = false;
+    let isDraining = false;
 
-  let selectedItem: { id: bigint, name: string, balance: bigint } | null = null;
+    let selectedItem: { id: bigint, name: string, balance: bigint } | null = null;
 
   // Derived
   $: selectedProfile = selectedProfileId !== null ? profiles.find(p => p.id === selectedProfileId) : null;
@@ -129,6 +137,8 @@
             account = data.address ?? null;
             if (account && account !== prevAccount) {
                 loadProfiles();
+                // Fetch account balance
+                getPublicClient(config)?.getBalance({ address: account }).then(b => accountBalance = b);
             }
         }
     });
@@ -140,6 +150,8 @@
             const currentAccount = getAccount(config);
             if (currentAccount.address) {
                 account = currentAccount.address;
+                const pc = getPublicClient(config);
+                if (pc) pc.getBalance({ address: account }).then(b => accountBalance = b);
                 await loadProfiles();
             } else {
                 try {
@@ -254,8 +266,12 @@
     let miningXp = 0n;
     let woodcuttingLevel = 1n;
     let woodcuttingXp = 0n;
+    let tbaBalance = 0n;
 
     try {
+        // Get TBA Balance
+        tbaBalance = await publicClient.getBalance({ address: tbaAddress });
+
         const itemsAddress = version === 'v1' ? CONTRACT_ADDRESSES.SkillerItems : CONTRACT_ADDRESSES.SkillerItemsV2;
         const itemsAbi = version === 'v1' ? ABIS.SkillerItems : ABIS.SkillerItemsV2;
 
@@ -372,7 +388,8 @@
         ironAxeBalance,
         ironPickaxeBalance,
         ironOreBalance,
-        coalOreBalance
+        coalOreBalance,
+        tbaBalance
     };
   }
 
@@ -725,7 +742,7 @@
         
         const address = CONTRACT_ADDRESSES.Diamond as Address;
         const abi = ABIS.GameDiamond; 
-
+        
         const { request } = await publicClient.simulateContract({
             account,
             address,
@@ -748,6 +765,152 @@
     }
   }
   
+  async function getTbaForProfile(tokenId: bigint, publicClient: any, version: 'v1' | 'v2'): Promise<Address> {
+      const chainIdFromNetwork = await publicClient.getChainId();
+      const profileAddress = version === 'v1' ? CONTRACT_ADDRESSES.SkillerProfile : CONTRACT_ADDRESSES.SkillerProfileV2;
+      
+      return await publicClient.readContract({
+        address: CONTRACT_ADDRESSES.ERC6551Registry as Address,
+        abi: ABIS.ERC6551Registry,
+        functionName: 'account',
+        args: [
+            CONTRACT_ADDRESSES.ERC6551Account as Address,
+            0n,
+            BigInt(chainIdFromNetwork),
+            profileAddress as Address,
+            tokenId
+        ]
+      });
+  }
+
+  async function handleSend() {
+      if (!selectedItem || !account || !selectedProfile || !sendRecipientId || !sendAmount) return;
+      
+      actionLoading = 'send';
+      try {
+        const walletClient = await getWalletClient(config);
+        const publicClient = getPublicClient(config);
+        
+        // Resolve Recipient
+        const recipientId = BigInt(sendRecipientId);
+        if (recipientId === selectedProfile.id) {
+            throw new Error("Cannot send to self");
+        }
+
+        // Determine recipient TBA
+        // We assume same version for simplicity, or we could check if recipient exists in V2 first?
+        // The user says "send to OTHER skillers by their #". 
+        // If I am V2, I probably send to V2 Skiller #. 
+        // Let's assume same version for now.
+        const recipientTba = await getTbaForProfile(recipientId, publicClient, selectedProfile.version);
+
+        const address = selectedProfile.version === 'v1' ? CONTRACT_ADDRESSES.SkillerItems : CONTRACT_ADDRESSES.SkillerItemsV2;
+        const abi = selectedProfile.version === 'v1' ? ABIS.SkillerItems : ABIS.SkillerItemsV2;
+        
+        const tbaAddress = selectedProfile.tba;
+        const itemsAddr = address;
+
+        // Verify Code exists at TBA (Activate if needed)
+        const code = await publicClient.getBytecode({ address: tbaAddress });
+        if (!code || code === '0x') {
+            showToast("Activating Account...", 'default');
+            try {
+                const chainId = await publicClient.getChainId();
+                const profileAddress = selectedProfile.version === 'v1' 
+                    ? CONTRACT_ADDRESSES.SkillerProfile 
+                    : CONTRACT_ADDRESSES.SkillerProfileV2;
+
+                const { request: deployReq } = await publicClient.simulateContract({
+                    account,
+                    address: CONTRACT_ADDRESSES.ERC6551Registry as Address,
+                    abi: ABIS.ERC6551Registry,
+                    functionName: 'createAccount',
+                    args: [
+                        CONTRACT_ADDRESSES.ERC6551Account as Address,
+                        0n, // salt
+                        BigInt(chainId),
+                        profileAddress as Address,
+                        selectedProfile.id
+                    ]
+                });
+                const deployHash = await walletClient.writeContract(deployReq);
+                await publicClient.waitForTransactionReceipt({ hash: deployHash });
+                
+                // Wait a moment for the node to index the code
+                await new Promise(r => setTimeout(r, 2000));
+                showToast("Account Activated!");
+            } catch (deployError: any) {
+                console.error("Activation failed:", deployError);
+                throw new Error("Failed to activate account: " + deployError.message);
+            }
+        }
+
+        // Check Balance
+        const amount = BigInt(sendAmount) * (selectedItem.name.includes('Gold') && selectedProfile.version === 'v2' ? 1000000000000000000n : 1n);
+        
+        const currentBalance = await publicClient.readContract({
+            address: itemsAddr as Address,
+            abi,
+            functionName: 'balanceOf',
+            args: [tbaAddress, selectedItem.id]
+        }) as bigint;
+
+        if (currentBalance < amount) {
+             throw new Error("Insufficient balance");
+        }
+
+        // Check TBA gas
+        const tbaBalance = await publicClient.getBalance({ address: tbaAddress });
+        if (tbaBalance === 0n) {
+             showFundConfirmation = true;
+             actionLoading = null;
+             // Keep send modal open
+             return;
+        }
+
+        // Encode Transfer
+        const transferData = encodeFunctionData({
+            abi: abi,
+            functionName: 'safeTransferFrom',
+            args: [tbaAddress, recipientTba, selectedItem.id, amount, '0x']
+        });
+
+        // Execute
+        const { request } = await publicClient.simulateContract({
+            account,
+            address: tbaAddress,
+            abi: ABIS.ERC6551Account,
+            functionName: 'execute',
+            args: [itemsAddr, 0n, transferData, 0n]
+        });
+        
+        const hash = await walletClient.writeContract(request);
+        showToast(`Sending ${sendAmount} ${selectedItem.name}...`);
+        await publicClient.waitForTransactionReceipt({ hash });
+        
+        showToast('Item Sent!', 'inventory');
+        showSendModal = false;
+        sendRecipientId = '';
+        sendAmount = '1';
+        
+        // If all items sent, close the detail view
+        if (amount === currentBalance) {
+             selectedItem = null;
+        } else {
+            // Update local balance display before reload finishes
+            selectedItem.balance = currentBalance - amount;
+        }
+
+        await loadProfiles(true);
+
+      } catch (e: any) {
+          console.error("Send failed:", e);
+          showToast(`Failed: ${e.message}`, 'error');
+      } finally {
+          actionLoading = null;
+      }
+  }
+
   async function fundCharacter() {
         if (!selectedProfile || !account) return;
         isFunding = true;
@@ -763,8 +926,8 @@
             await publicClient.waitForTransactionReceipt({ hash: tx });
             showToast("Character Funded!");
             showFundConfirmation = false;
-            // Optionally retry delete logic automatically? 
-            // User can just click delete again for now.
+            // Refresh profile to update balance
+            await loadProfiles(true);
         } catch (fundError: any) {
             console.error("Funding failed:", fundError);
             showToast("Funding failed", 'error');
@@ -772,6 +935,46 @@
             isFunding = false;
         }
   }
+
+  async function drainTba() {
+      if (!selectedProfile || !account || !selectedProfile.tbaBalance || selectedProfile.tbaBalance === 0n) return;
+      
+      isDraining = true;
+      try {
+          const walletClient = await getWalletClient(config);
+          const publicClient = getPublicClient(config);
+
+          const tbaAddress = selectedProfile.tba;
+          const balance = selectedProfile.tbaBalance;
+          
+          // We need to leave some gas for the execution itself?
+          // The caller pays for the gas of the `execute` function.
+          // The TBA simply forwards the call.
+          // So we should be able to send the full balance.
+          
+          const { request } = await publicClient.simulateContract({
+            account,
+            address: tbaAddress,
+            abi: ABIS.ERC6551Account,
+            functionName: 'execute',
+            args: [account, balance, '0x', 0n] // Send to owner (account), amount=balance, data=0x, op=0
+          });
+
+          const hash = await walletClient.writeContract(request);
+          showToast("Draining TBA...");
+          await publicClient.waitForTransactionReceipt({ hash });
+          
+          showToast("TBA Drained!");
+          await loadProfiles(true);
+          
+      } catch (e: any) {
+          console.error("Drain failed:", e);
+          showToast(`Drain failed: ${e.message}`, 'error');
+      } finally {
+          isDraining = false;
+      }
+  }
+
   async function burnCharacter() {
         if (!selectedProfile || !account || burnConfirmationInput !== 'BURN') return;
         isBurning = true;
@@ -861,11 +1064,33 @@
                             </span>
                         </div>
                         <div class="info-row">
+                            <span class="label">Address ETH</span>
+                            <span class="value">
+                                {(Number(accountBalance) / 1e18).toFixed(4)} ETH
+                            </span>
+                        </div>
+                        <div class="info-row">
                             <span class="label">TBA</span>
                             <span class="value" on:click={() => copyToClipboard(selectedProfile?.tba || '')}>
                                 {truncateAddress(selectedProfile?.tba || '')} <Copy size={12}/>
                             </span>
                         </div>
+                        <div class="info-row">
+                            <span class="label">TBA ETH</span>
+                            <span class="value">
+                                {Number(selectedProfile?.tbaBalance || 0n) / 1e18} ETH
+                            </span>
+                        </div>
+
+                        <button class="fund-btn" on:click={() => { showFundConfirmation = true; showProfile = false; }}>
+                            Fund TBA
+                        </button>
+
+                        {#if (selectedProfile.tbaBalance || 0n) > 0n}
+                            <button class="fund-btn" on:click={drainTba} disabled={isDraining}>
+                                {#if isDraining}<div class="spinner-small"></div>{:else}Drain TBA{/if}
+                            </button>
+                        {/if}
                         
                         {#if selectedProfile.version === 'v1'}
                             <div class="migration-box">
@@ -889,7 +1114,15 @@
                          <h3>Player Profile</h3>
                          <div class="info-row">
                             <span class="label">Address</span>
-                            <span class="value">{truncateAddress(account || '')}</span>
+                            <span class="value" on:click={() => copyToClipboard(account || '')}>
+                                {truncateAddress(account || '')} <Copy size={12}/>
+                            </span>
+                        </div>
+                        <div class="info-row">
+                            <span class="label">Address ETH</span>
+                            <span class="value">
+                                {(Number(accountBalance) / 1e18).toFixed(4)} ETH
+                            </span>
                         </div>
                     {/if}
                 </div>
@@ -927,21 +1160,21 @@
 
     <!-- Fund Confirmation Modal -->
     {#if showFundConfirmation}
-        <div class="modal-backdrop">
-            <div class="modal-content burn-modal"> <!-- Reuse burn modal style for simplicity or create new class -->
+        <div class="fund-modal-backdrop">
+            <div class="fund-modal-content">
                 <h3>Fund Character</h3>
                 <p style="font-size: 0.9rem; color: #aaa; margin-bottom: 1rem;">
-                    Your character (TBA) needs a small amount of ETH to pay for gas to delete items.
+                    Your character (TBA) needs a small amount of ETH (0.0005) to pay for gas to send or delete items.
                 </p>
                 <div class="modal-actions">
                     <button class="cancel-btn" on:click={() => showFundConfirmation = false}>Cancel</button>
                     <button 
-                        class="confirm-burn-btn" 
+                        class="confirm-burn-btn confirm-btn-fixed" 
                         style="background: #2563eb; color: white;"
                         disabled={isFunding}
                         on:click={fundCharacter}
                     >
-                        {#if isFunding}<div class="spinner-small"></div>{:else}Send 0.0005 ETH{/if}
+                        {#if isFunding}<div class="spinner-small"></div>{:else}Send{/if}
                     </button>
                 </div>
             </div>
@@ -958,7 +1191,13 @@
                         <div class="detail-header" style="justify-content: space-between;">
                             <button class="back-btn" on:click={() => selectedItem = null}><ArrowLeft size={20}/></button>
                             <h3>{selectedItem.name}</h3>
-                            <div style="width: 20px;"></div> <!-- Spacer to center title -->
+                            <button class="back-btn delete-icon-btn" on:click={deleteItem} disabled={!!actionLoading}>
+                                {#if actionLoading === 'delete'}
+                                    <div class="spinner-small"></div>
+                                {:else}
+                                    <Trash2 size={20} color="#cf6679"/>
+                                {/if}
+                            </button>
                         </div>
                         <div class="detail-content" style="gap: 1rem;">
                             <div class="large-icon">
@@ -972,15 +1211,13 @@
                                 {:else if selectedItem.name.includes('Pickaxe')} <Pickaxe size={48} color="#cd7f32"/>
                                 {/if}
                             </div>
-                            <p>Balance: {selectedItem.balance}</p>
+                            <p>Balance: {selectedItem.name.includes('Gold') && selectedProfile?.version === 'v2' 
+                                ? Math.floor(Number(selectedItem.balance) / 1e18)
+                                : selectedItem.balance}</p>
                             
                             <div class="detail-actions">
-                                <button class="delete-btn" on:click={deleteItem} disabled={!!actionLoading}>
-                                    {#if actionLoading === 'delete'}
-                                        <div class="spinner-small"></div>
-                                    {:else}
-                                        <Trash2 size={16}/> Delete All
-                                    {/if}
+                                <button class="send-btn" on:click={() => { showSendModal = true; sendAmount = '1'; }}>
+                                    <Send size={16}/> Send
                                 </button>
                             </div>
                         </div>
@@ -1048,6 +1285,47 @@
         </div>
     {/if}
     
+    <!-- Send Modal -->
+    {#if showSendModal && selectedItem}
+        <div class="modal-backdrop" on:click={() => showSendModal = false}>
+            <div class="modal-content send-modal" on:click|stopPropagation>
+                <h3>Send {selectedItem.name}</h3>
+                
+                <div class="input-group">
+                    <label>Recipient Skiller #</label>
+                    <input type="number" bind:value={sendRecipientId} placeholder="e.g. 123" class="confirm-input"/>
+                </div>
+                
+                <div class="input-group">
+                    <label>Amount</label>
+                    <input type="number" bind:value={sendAmount} class="confirm-input"/>
+                    <div class="amount-presets">
+                        <button on:click={() => sendAmount = '1'}>1</button>
+                        <button on:click={() => sendAmount = '10'}>10</button>
+                        <button on:click={() => sendAmount = '100'}>100</button>
+                        <button on:click={() => {
+                             const bal = selectedItem.name.includes('Gold') && selectedProfile?.version === 'v2'
+                                ? Math.floor(Number(selectedItem.balance) / 1e18)
+                                : Number(selectedItem.balance);
+                             sendAmount = bal.toString();
+                        }}>All</button>
+                    </div>
+                </div>
+
+                <div class="modal-actions">
+                    <button class="cancel-btn" on:click={() => showSendModal = false}>Cancel</button>
+                    <button class="confirm-btn" on:click={handleSend} disabled={!sendRecipientId || !sendAmount || !!actionLoading}>
+                        {#if actionLoading === 'send'}
+                            <div class="spinner-small"></div>
+                        {:else}
+                            Send
+                        {/if}
+                    </button>
+                </div>
+            </div>
+        </div>
+    {/if}
+
     <!-- Crafting Modal -->
     {#if showCrafting}
         <div class="modal-backdrop" on:click={() => showCrafting = false}>
@@ -1340,7 +1618,44 @@
     .detail-actions {
         width: 100%;
         display: flex;
+        flex-direction: column;
+        gap: 0.75rem;
+    }
+    
+    .send-btn {
+        background: #2563eb;
+        color: white;
+        border: none;
+        padding: 0.75rem 1.5rem;
+        border-radius: 12px;
+        cursor: pointer;
+        font-weight: 600;
+        display: flex;
+        align-items: center;
         justify-content: center;
+        gap: 0.5rem;
+        transition: background 0.2s;
+    }
+    
+    .send-btn:hover {
+        background: #1d4ed8;
+    }
+
+    .fund-btn {
+        width: 100%;
+        background: #333;
+        color: #aaa;
+        border: 1px solid #444;
+        padding: 0.5rem;
+        border-radius: 8px;
+        margin-top: 0.5rem;
+        margin-bottom: 1rem;
+        cursor: pointer;
+        font-size: 0.8rem;
+    }
+    .fund-btn:hover {
+        background: #444;
+        color: white;
     }
     
     .delete-btn {
@@ -1353,6 +1668,7 @@
         font-weight: 600;
         display: flex;
         align-items: center;
+        justify-content: center;
         gap: 0.5rem;
         transition: background 0.2s;
     }
@@ -1365,9 +1681,72 @@
         opacity: 0.5;
         cursor: not-allowed;
     }
+    
+    .delete-icon-btn {
+        color: #cf6679;
+    }
+    
+    .delete-icon-btn:hover {
+        color: #e57373;
+    }
 
     .item-detail {
         animation: fadeIn 0.2s ease;
+    }
+    
+    .send-modal {
+        top: 50%;
+        left: 50%;
+        transform: translate(-50%, -50%);
+        width: 280px;
+    }
+    
+    .send-modal h3 {
+        margin-top: 0;
+        color: white;
+        text-align: center;
+    }
+    
+    .amount-presets {
+        display: flex;
+        gap: 0.5rem;
+        margin-top: 0.5rem;
+    }
+    
+    .amount-presets button {
+        flex: 1;
+        background: #333;
+        border: 1px solid #444;
+        color: white;
+        border-radius: 4px;
+        padding: 4px;
+        cursor: pointer;
+        font-size: 0.8rem;
+    }
+    
+    .confirm-btn {
+        background: #2563eb;
+        color: white;
+        min-width: 80px; /* Ensure minimum width */
+        display: flex;
+        justify-content: center;
+        align-items: center;
+        height: 40px; /* Fixed height to prevent jump */
+    }
+    
+    .confirm-btn-fixed {
+        min-width: 80px;
+        display: flex;
+        justify-content: center;
+        align-items: center;
+        height: 40px;
+    }
+
+    .input-group label {
+        display: block;
+        color: #aaa;
+        margin-bottom: 0.5rem;
+        font-size: 0.9rem;
     }
     
     @keyframes fadeIn {
@@ -1479,6 +1858,37 @@
     .inventory-modal { bottom: 90px; right: 20px; }
     .profile-modal { top: 90px; right: 20px; max-width: 300px; }
     
+    /* Fund Confirmation Modal */
+    .fund-modal-backdrop {
+        position: fixed; 
+        top: 0; 
+        left: 0; 
+        width: 100%; 
+        height: 100%; 
+        background: rgba(0, 0, 0, 0.6); 
+        z-index: 200; /* Higher than others */
+    }
+    
+    .fund-modal-content {
+        position: fixed; 
+        background: #1e1e1e; 
+        min-width: 200px; 
+        border-radius: 16px; 
+        border: 1px solid #333; 
+        padding: 1rem; 
+        animation: fadeIn 0.2s ease-out; 
+        box-shadow: 0 8px 32px rgba(0,0,0,0.5); 
+        z-index: 210;
+        max-width: 280px; 
+        top: 50%;
+        left: 50%;
+        transform: translate(-50%, -50%);
+    }
+    
+    .fund-modal-content h3 {
+        margin-top: 0;
+    }
+
     /* Profile Modal Tweaks */
     .profile-info h3 {
         margin: 0 0 1rem 0;
@@ -1490,7 +1900,22 @@
     }
     
     .inventory-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(60px, 1fr)); gap: 0.5rem; }
-    .inventory-item { background: #252525; border-radius: 12px; display: flex; align-items: center; justify-content: center; aspect-ratio: 1; position: relative; border: 1px solid #333; }
+    .inventory-item { 
+        background: #252525; 
+        border-radius: 12px; 
+        display: flex; 
+        align-items: center; 
+        justify-content: center; 
+        aspect-ratio: 1; 
+        position: relative; 
+        border: 1px solid #333;
+        cursor: pointer;
+        transition: background 0.2s, border-color 0.2s;
+    }
+    .inventory-item:hover {
+        background: #2a2a2a;
+        border-color: #555;
+    }
     .inventory-item .item-count { position: absolute; top: 2px; right: 6px; font-size: 0.8rem; font-weight: bold; color: white; }
     .empty-state { grid-column: 1 / -1; text-align: center; color: #666; }
     @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
@@ -1546,7 +1971,17 @@
     .info-row .label { color: #888; }
     .info-row .value { color: #aaa; font-family: monospace; cursor: pointer; }
     .burn-section { margin-top: 1.5rem; display: flex; justify-content: center; border-top: 1px solid #333; padding-top: 1rem; }
-    .burn-trigger-btn { background: rgba(207, 102, 121, 0.1); color: #cf6679; border: 1px solid #cf6679; padding: 0.5rem 1rem; border-radius: 8px; cursor: pointer; }
+    .burn-trigger-btn { 
+        background: rgba(207, 102, 121, 0.1); 
+        color: #cf6679; 
+        border: 1px solid #cf6679; 
+        padding: 0.5rem 1rem; 
+        border-radius: 8px; 
+        cursor: pointer;
+        display: flex;
+        align-items: center;
+        gap: 0.5rem;
+    }
     .burn-modal { 
         max-width: 280px; 
         top: 50%;
