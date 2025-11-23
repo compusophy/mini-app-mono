@@ -717,6 +717,41 @@
 
         const tbaAddress = selectedProfile.tba;
         
+        // Verify Code exists at TBA (Activate if needed)
+        const code = await publicClient.getBytecode({ address: tbaAddress });
+        if (!code || code === '0x') {
+            showToast("Activating Account...", 'default');
+            try {
+                const chainId = await publicClient.getChainId();
+                const profileAddress = selectedProfile.version === 'v1' 
+                    ? CONTRACT_ADDRESSES.SkillerProfile 
+                    : CONTRACT_ADDRESSES.SkillerProfileV2;
+
+                const { request: deployReq } = await publicClient.simulateContract({
+                    account,
+                    address: CONTRACT_ADDRESSES.ERC6551Registry as Address,
+                    abi: ABIS.ERC6551Registry,
+                    functionName: 'createAccount',
+                    args: [
+                        CONTRACT_ADDRESSES.ERC6551Account as Address,
+                        0n, // salt
+                        BigInt(chainId),
+                        profileAddress as Address,
+                        selectedProfile.id
+                    ]
+                });
+                const deployHash = await walletClient.writeContract(deployReq);
+                await publicClient.waitForTransactionReceipt({ hash: deployHash });
+                
+                // Wait a moment for the node to index the code
+                await new Promise(r => setTimeout(r, 2000));
+                showToast("Account Activated!");
+            } catch (deployError: any) {
+                console.error("Activation failed:", deployError);
+                throw new Error("Failed to activate account: " + deployError.message);
+            }
+        }
+
         // Check Balance
         const itemsAddr = selectedProfile.version === 'v1' ? CONTRACT_ADDRESSES.SkillerItems : CONTRACT_ADDRESSES.SkillerItemsV2;
         const abi = selectedProfile.version === 'v1' ? ABIS.SkillerItems : ABIS.SkillerItemsV2;
