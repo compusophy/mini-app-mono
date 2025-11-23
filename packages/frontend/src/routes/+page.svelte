@@ -48,6 +48,7 @@
   let showProfile = false;
   let showSkills = false;
   let showCrafting = false;
+  let showQuests = false;
   let showSendModal = false;
 
   let errorMsg: string | null = null;
@@ -693,6 +694,108 @@
       } catch (e: any) {
           console.error("Delete failed:", e);
           showToast(`Failed: ${e.message}`, 'error');
+      } finally {
+          actionLoading = null;
+      }
+  }
+
+  async function handleQuest(questId: number) {
+      if (!selectedProfile || !account || !!actionLoading) return;
+      
+      // Quest Config
+      const questMap = {
+          1: { id: 201n, amount: 20n, name: 'Oak Logs' },
+          2: { id: 301n, amount: 20n, name: 'Iron Ore' }
+      };
+      const quest = questMap[questId as keyof typeof questMap];
+      if (!quest) return;
+
+      actionLoading = `quest-${questId}`;
+      try {
+        const walletClient = await getWalletClient(config);
+        const publicClient = getPublicClient(config);
+
+        const tbaAddress = selectedProfile.tba;
+        
+        // Check Balance
+        const itemsAddr = selectedProfile.version === 'v1' ? CONTRACT_ADDRESSES.SkillerItems : CONTRACT_ADDRESSES.SkillerItemsV2;
+        const abi = selectedProfile.version === 'v1' ? ABIS.SkillerItems : ABIS.SkillerItemsV2;
+        
+        const balance = await publicClient.readContract({
+            address: itemsAddr as Address,
+            abi,
+            functionName: 'balanceOf',
+            args: [tbaAddress, quest.id]
+        }) as bigint;
+
+        if (balance < quest.amount) {
+            throw new Error(`Need ${quest.amount} ${quest.name}`);
+        }
+
+        // Check TBA Gas (Buffer of 0.0001 ETH)
+        const tbaBalance = await publicClient.getBalance({ address: tbaAddress });
+        if (tbaBalance < 100000000000000n) {
+             showFundConfirmation = true;
+             showQuests = false; // Hide quest modal
+             actionLoading = null;
+             return;
+        }
+
+        // Encode Quest ID (uint256) manually to avoid import issues
+        // Quest ID is simple number, pad to 32 bytes (64 chars)
+        const questIdHex = BigInt(questId).toString(16).padStart(64, '0');
+        const data = `0x${questIdHex}`;
+
+        // Encode Transfer: safeTransferFrom(from, to, id, amount, data)
+        // Use manual ABI because the generated one might be incorrect (ERC721 vs ERC1155 mismatch)
+        const safeTransferFromAbi = [{
+            "inputs": [
+                { "name": "from", "type": "address" },
+                { "name": "to", "type": "address" },
+                { "name": "id", "type": "uint256" },
+                { "name": "amount", "type": "uint256" },
+                { "name": "data", "type": "bytes" }
+            ],
+            "name": "safeTransferFrom",
+            "outputs": [],
+            "stateMutability": "nonpayable",
+            "type": "function"
+        }];
+
+        const transferData = encodeFunctionData({
+            abi: safeTransferFromAbi,
+            functionName: 'safeTransferFrom',
+            args: [
+                tbaAddress, 
+                CONTRACT_ADDRESSES.Diamond as Address, // Send to Diamond
+                quest.id, 
+                quest.amount, 
+                data
+            ]
+        });
+
+        // Execute from TBA
+        const { request } = await publicClient.simulateContract({
+            account,
+            address: tbaAddress,
+            abi: ABIS.ERC6551Account,
+            functionName: 'execute',
+            args: [itemsAddr, 0n, transferData, 0n]
+        });
+
+        const hash = await walletClient.writeContract(request);
+        showToast(`Contributing ${quest.name}...`);
+        await publicClient.waitForTransactionReceipt({ hash });
+        
+        // Reload profiles first so the balance updates visually when the spinner stops
+        await loadProfiles(true);
+        
+        showToast('Quest Completed!', 'inventory');
+        showToast('+100 Gold Coins', 'item-received');
+
+      } catch (e: any) {
+          console.error("Quest failed:", e);
+          showToast(`Quest failed: ${e.message}`, 'error');
       } finally {
           actionLoading = null;
       }
@@ -1374,6 +1477,62 @@
         </div>
     {/if}
     
+    <!-- Quests Modal -->
+    {#if showQuests}
+        <div class="modal-backdrop" on:click={() => showQuests = false}>
+            <div class="modal-content quests-modal" on:click|stopPropagation>
+                
+                <div class="quests-list">
+                    <!-- Quest 1: Oak Logs -->
+                    <div class="quest-card">
+                        <div class="quest-icon"><TreeDeciduous size={24} color="#4ade80"/></div>
+                        <div class="quest-info">
+                            <h4>Lumberjack's Aid</h4>
+                            <div class="cost">
+                                <span>Contribute 20 Oak Logs</span>
+                                <span style="color: #ffd700;">Reward: 100 Gold Coins</span>
+                            </div>
+                        </div>
+                        <button 
+                            class="quest-btn" 
+                            on:click={() => handleQuest(1)}
+                            disabled={!!actionLoading || (selectedProfile?.woodBalance || 0n) < 20n}
+                        >
+                            {#if actionLoading === 'quest-1'}
+                                <div class="spinner-small"></div>
+                            {:else}
+                                Give
+                            {/if}
+                        </button>
+                    </div>
+
+                    <!-- Quest 2: Iron Ore -->
+                    <div class="quest-card">
+                         <div class="quest-icon"><Mountain size={24} color="#b0bec5"/></div>
+                        <div class="quest-info">
+                            <h4>Miner's Request</h4>
+                            <div class="cost">
+                                <span>Contribute 20 Iron Ore</span>
+                                <span style="color: #ffd700;">Reward: 100 Gold Coins</span>
+                            </div>
+                        </div>
+                        <button 
+                            class="quest-btn" 
+                            on:click={() => handleQuest(2)}
+                            disabled={!!actionLoading || (selectedProfile?.ironOreBalance || 0n) < 20n}
+                        >
+                            {#if actionLoading === 'quest-2'}
+                                <div class="spinner-small"></div>
+                            {:else}
+                                Give
+                            {/if}
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    {/if}
+    
     <!-- Skills Modal -->
     {#if showSkills}
         <div class="modal-backdrop" on:click={() => showSkills = false}>
@@ -1538,8 +1697,7 @@
         {:else}
             <!-- Footer nav -->
             <div class="footer-left">
-                <!-- Leaderboard Icon Updated to HelpCircle, disabled logic -->
-                <button class="square-btn" on:click={() => showToast('Quests coming soon!')}>
+                <button class="square-btn" on:click={() => showQuests = !showQuests}>
                     <HelpCircle size={24} />
                 </button>
             </div>
@@ -2015,13 +2173,13 @@
         overflow-y: auto;
     }
     
-    .recipes-list {
+    .recipes-list, .quests-list {
         display: flex;
         flex-direction: column;
         gap: 1rem;
     }
     
-    .recipe-card {
+    .recipe-card, .quest-card {
         background: #252525;
         border: 1px solid #333;
         border-radius: 8px;
@@ -2031,11 +2189,20 @@
         gap: 0.75rem;
     }
     
-    .recipe-info { flex: 1; }
-    .recipe-info h4 { margin: 0 0 0.25rem 0; color: white; font-size: 0.9rem; }
+    .recipe-info, .quest-info { flex: 1; }
+    .recipe-info h4, .quest-info h4 { margin: 0 0 0.25rem 0; color: white; font-size: 0.9rem; }
     .cost { display: flex; flex-direction: column; font-size: 0.7rem; color: #aaa; }
-    .craft-btn { background: #2e7d32; color: white; border: none; padding: 0.5rem; border-radius: 6px; cursor: pointer; font-size: 0.8rem; }
-    .craft-btn:disabled { background: #333; color: #666; cursor: not-allowed; }
+    .craft-btn, .quest-btn { background: #2e7d32; color: white; border: none; padding: 0.5rem 1rem; border-radius: 6px; cursor: pointer; font-size: 0.8rem; font-weight: bold; }
+    .craft-btn:disabled, .quest-btn:disabled { background: #333; color: #666; cursor: not-allowed; }
+
+    .quests-modal {
+        top: 50%;
+        left: 50%;
+        transform: translate(-50%, -50%);
+        width: 300px;
+        max-height: 80vh;
+        overflow-y: auto;
+    }
     
     .version-tag { font-size: 0.7rem; background: #333; padding: 2px 6px; border-radius: 4px; margin-left: 8px; vertical-align: middle; }
     .profile-btn-content { display: flex; align-items: center; justify-content: center; gap: 10px; }

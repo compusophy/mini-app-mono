@@ -3,7 +3,7 @@ import { ethers } from "hardhat";
 import addresses from "../../frontend/src/lib/addresses.json";
 
 async function main() {
-    const tokenId = 50;
+    const tokenId = 64;
     const diamondAddr = addresses.Diamond;
     const newItemsAddr = addresses.SkillerItemsV2;
     const newProfileAddr = addresses.SkillerProfileV2;
@@ -12,10 +12,12 @@ async function main() {
     const accountImplementation = addresses.ERC6551Account;
     const registryAddr = addresses.ERC6551Registry;
 
+    const [deployer] = await ethers.getSigners();
     const provider = ethers.provider;
     const chainId = (await provider.getNetwork()).chainId;
 
     console.log("Checking Skiller #", tokenId);
+    console.log("Deployer:", deployer.address);
     
     // Registry Helper
     const Registry = await ethers.getContractAt("IERC6551Registry", registryAddr);
@@ -48,7 +50,9 @@ async function main() {
     // 4. Check New Items Balance (V2)
     const NewItems = await ethers.getContractAt("SkillerItemsV2", newItemsAddr);
     const oakLogsV2 = await NewItems.balanceOf(newTBA, 201);
+    const ironOreV2 = await NewItems.balanceOf(newTBA, 301);
     console.log(`V2 Oak Logs (201) Balance: ${oakLogsV2}`);
+    console.log(`V2 Iron Ore (301) Balance: ${ironOreV2}`);
 
     // 5. Check Other Items
     const bronzeAxeV2 = await NewItems.balanceOf(newTBA, 101);
@@ -57,27 +61,60 @@ async function main() {
     const goldV2 = await NewItems.balanceOf(newTBA, 1);
     console.log(`V2 Gold (1): ${ethers.formatEther(goldV2)}`);
 
-    // 6. Check XP in Diamond
+    // 6. Check XP in Diamond and Fix
     const GameDiamond = await ethers.getContractAt("GameFacet", diamondAddr);
     try {
         const stats = await GameDiamond.getStats(tokenId);
+        const miningXp = stats[0]; // Mining
+        const woodcuttingXp = stats[1]; // Woodcutting
+
         console.log("V2 XP Stats:");
-        console.log(`  Mining: ${stats[0]}`);
-        console.log(`  Woodcutting: ${stats[1]}`);
-    } catch (e) {
-        console.log("Could not read stats:", e.message);
+        console.log(`  Mining: ${miningXp}`);
+        console.log(`  Woodcutting: ${woodcuttingXp}`);
+
+        // FIX LOGIC
+        const expectedIronOre = miningXp / 10n;
+        const expectedOakLogs = woodcuttingXp / 10n;
+
+        console.log(`\n--- Fixing Items ---`);
+        console.log(`Expected Iron Ore: ${expectedIronOre} (Current: ${ironOreV2})`);
+        console.log(`Expected Oak Logs: ${expectedOakLogs} (Current: ${oakLogsV2})`);
+
+        // Check Minter Role
+        const isMinter = await NewItems.minters(deployer.address);
+        if (!isMinter) {
+             console.log("Deployer is NOT a minter. Attempting to grant role...");
+             await (await NewItems.setMinter(deployer.address, true)).wait();
+             console.log("Minter role granted.");
+        }
+
+        // Mint Iron Ore
+        if (expectedIronOre > ironOreV2) {
+            const diff = expectedIronOre - ironOreV2;
+            console.log(`Minting ${diff} Iron Ore...`);
+            await (await NewItems.mint(newTBA, 301, diff, "0x")).wait();
+            console.log("Done.");
+        } else {
+            console.log("Iron Ore balance is sufficient.");
+        }
+
+        // Mint Oak Logs
+        if (expectedOakLogs > oakLogsV2) {
+            const diff = expectedOakLogs - oakLogsV2;
+            console.log(`Minting ${diff} Oak Logs...`);
+            await (await NewItems.mint(newTBA, 201, diff, "0x")).wait();
+            console.log("Done.");
+        } else {
+            console.log("Oak Logs balance is sufficient.");
+        }
+
+    } catch (e: any) {
+        console.log("Error during fix:", e.message || e);
     }
 
     // Conclusion
-    if (oakLogsV1 > 0 && oakLogsV2 === 0n) {
+    if (oakLogsV1 > 0n && oakLogsV2 === 0n) {
         console.log("ALERT: V1 Logs existed but were NOT migrated.");
-        console.log("Possible reasons: Migration contract approval on V1 items?");
-        // Note: Migration contract does NOT need approval to read balance, but it needs to mint on V2.
-        // It logic: 
-        // uint256 bal = oldItems.balanceOf(oldTBA, itemIds[i]);
-        // if (bal > 0) { newItems.mint(newTBA, itemIds[i], bal, ""); }
-    } else if (oakLogsV1 == 0) {
-        console.log("Observation: No V1 logs found on-chain. XP might be from logs that were sold, burnt, or dropped?");
     }
 }
 
@@ -87,4 +124,3 @@ main()
         console.error(error);
         process.exit(1);
     });
-
