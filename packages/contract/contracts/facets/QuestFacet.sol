@@ -49,6 +49,30 @@ contract QuestFacet is IERC1155Receiver {
              
              gs.items.mint(from, GOLD_COINS, 100 * 10**18, "");
              emit QuestCompleted(from, questId, 100 * 10**18);
+        } else if (questId == 3) {
+            // King's Tribute: Contribute 1000 Gold Coins
+            require(id == GOLD_COINS, "Quest 3: Must be Gold Coins");
+            require(value == 1000 * 10**18, "Quest 3: Must be 1000 Gold");
+
+            // Pseudo-random 0-200 (represents 0.00x to 2.00x)
+            // Include gasleft() to add more variance within the same block/user context
+            uint256 seed = uint256(keccak256(abi.encodePacked(
+                block.timestamp, 
+                block.prevrandao, 
+                msg.sender, // usage of msg.sender (items contract) doesn't add entropy, but `from` does
+                from, 
+                id, 
+                value,
+                gasleft() // Add gasleft for more entropy
+            )));
+            uint256 multiplier = seed % 201; 
+            
+            uint256 reward = (value * multiplier) / 100;
+            
+            if (reward > 0) {
+                gs.items.mint(from, GOLD_COINS, reward, "");
+            }
+            emit QuestCompleted(from, questId, reward);
         } else {
             revert("QuestFacet: Invalid Quest ID");
         }

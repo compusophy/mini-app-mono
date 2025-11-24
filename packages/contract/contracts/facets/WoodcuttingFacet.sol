@@ -11,8 +11,29 @@ contract WoodcuttingFacet {
     
     uint256 constant OAK_LOG = 201;
     uint256 constant WILLOW_LOG = 202;
+    
+    uint256 constant WOODCUTTING_CHARM = 402;
 
     event Chopped(address indexed tba, uint256 logId, uint256 amount, uint256 xpGained);
+
+    // Square Root Helper
+    function sqrt(uint256 y) internal pure returns (uint256 z) {
+        if (y > 3) {
+            z = y;
+            uint256 x = y / 2 + 1;
+            while (x < z) {
+                z = x;
+                x = (y / x + x) / 2;
+            }
+        } else if (y != 0) {
+            z = 1;
+        }
+    }
+
+    // Level Calculator
+    function getLevel(uint256 xp) internal pure returns (uint256) {
+        return sqrt(xp / 100) + 1;
+    }
 
     function chopOak(uint256 tokenId) external {
         _chop(tokenId, OAK_LOG);
@@ -31,11 +52,16 @@ contract WoodcuttingFacet {
         // Check Tools
         uint256 bronzeAxe = gs.items.balanceOf(tba, BRONZE_AXE);
         uint256 ironAxe = gs.items.balanceOf(tba, IRON_AXE);
+        uint256 hasCharm = gs.items.balanceOf(tba, WOODCUTTING_CHARM);
         require(bronzeAxe > 0 || ironAxe > 0, "No axe equipped");
 
         if (logId == WILLOW_LOG) {
             require(ironAxe > 0, "Iron Axe required for Willow");
         }
+
+        // CALCULATE LEVEL
+        uint256 currentXp = gs.xp[tokenId][2];
+        uint256 level = getLevel(currentXp);
 
         uint256 amount = 1;
         uint256 xp = 10; // Base XP for Oak
@@ -48,10 +74,18 @@ contract WoodcuttingFacet {
             }
         } else if (logId == WILLOW_LOG) {
             xp = 25; // Base for Willow
-            if (ironAxe > 0) {
-                // Maybe higher yield for Willow later?
-            }
+            // if (ironAxe > 0) { ... }
         }
+
+        // APPLY CHARM MULTIPLIER
+        if (hasCharm > 0) {
+            amount = amount * 2;
+            xp = xp * 2;
+        }
+
+        // APPLY LEVEL MULTIPLIER
+        amount = amount * level;
+        xp = xp * level;
 
         // Update XP
         gs.xp[tokenId][2] += xp; // Skill 2 = Woodcutting

@@ -11,8 +11,28 @@ contract MiningFacet {
     
     uint256 constant IRON_ORE = 301; // Was Copper/Iron
     uint256 constant COAL_ORE = 302; 
+    
+    uint256 constant MINING_CHARM = 401;
 
     event Mined(address indexed tba, uint256 oreId, uint256 amount, uint256 xpGained);
+
+    // Helpers
+    function sqrt(uint256 y) internal pure returns (uint256 z) {
+        if (y > 3) {
+            z = y;
+            uint256 x = y / 2 + 1;
+            while (x < z) {
+                z = x;
+                x = (y / x + x) / 2;
+            }
+        } else if (y != 0) {
+            z = 1;
+        }
+    }
+
+    function getLevel(uint256 xp) internal pure returns (uint256) {
+        return sqrt(xp / 100) + 1;
+    }
 
     function mineIron(uint256 tokenId) external {
         _mine(tokenId, IRON_ORE);
@@ -31,11 +51,16 @@ contract MiningFacet {
         // Check Tools
         uint256 bronzePick = gs.items.balanceOf(tba, BRONZE_PICKAXE);
         uint256 ironPick = gs.items.balanceOf(tba, IRON_PICKAXE);
+        uint256 hasCharm = gs.items.balanceOf(tba, MINING_CHARM);
         require(bronzePick > 0 || ironPick > 0, "No pickaxe equipped");
 
         if (oreId == COAL_ORE) {
             require(ironPick > 0, "Iron Pickaxe required for Coal");
         }
+
+        // CALCULATE LEVEL
+        uint256 currentXp = gs.xp[tokenId][1];
+        uint256 level = getLevel(currentXp);
 
         uint256 amount = 1;
         uint256 xp = 10; // Base XP
@@ -48,6 +73,16 @@ contract MiningFacet {
         } else if (oreId == COAL_ORE) {
             xp = 25;
         }
+
+        // APPLY CHARM MULTIPLIER
+        if (hasCharm > 0) {
+            amount = amount * 2;
+            xp = xp * 2;
+        }
+
+        // APPLY MULTIPLIER
+        amount = amount * level;
+        xp = xp * level;
 
         // Update XP
         gs.xp[tokenId][1] += xp; // Skill 1 = Mining

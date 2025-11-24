@@ -7,7 +7,7 @@
   import { encodeFunctionData, type Address } from 'viem';
   import { ABIS } from '$lib/abis';
   import addresses from '$lib/addresses.json';
-  import { Backpack, User, Axe, Pickaxe, Coins, TreeDeciduous, Mountain, ArrowLeft, BarChart3, Trophy, RefreshCw, Hammer, Trash2, Copy, HelpCircle, Send } from '@lucide/svelte';
+  import { Backpack, User, Axe, Pickaxe, Coins, TreeDeciduous, Mountain, ArrowLeft, BarChart3, Trophy, RefreshCw, Hammer, Trash2, Copy, HelpCircle, Send, Store, Gem } from '@lucide/svelte';
 
   const CONTRACT_ADDRESSES = addresses;
 
@@ -30,6 +30,8 @@
     ironPickaxeBalance?: bigint;
     ironOreBalance?: bigint;
     coalOreBalance?: bigint;
+    miningCharm?: boolean;
+    woodcuttingCharm?: boolean;
     tbaBalance?: bigint; // Native ETH balance of TBA
   };
 
@@ -49,6 +51,7 @@
   let showSkills = false;
   let showCrafting = false;
   let showQuests = false;
+  let showShop = false;
   let showSendModal = false;
 
   let errorMsg: string | null = null;
@@ -57,10 +60,10 @@
   let sendRecipientId = '';
   let sendAmount = '1';
 
-  type Toast = {
+    type Toast = {
     id: number;
     msg: string;
-    type: 'default' | 'woodcutting-xp' | 'mining-xp' | 'inventory' | 'error' | 'item-received';
+    type: 'default' | 'woodcutting-xp' | 'mining-xp' | 'inventory' | 'error' | 'item-received' | 'level-up' | 'item-log' | 'item-ore' | 'item-gold';
   };
   let toasts: Toast[] = [];
   let toastIdCounter = 0;
@@ -80,7 +83,7 @@
   // Derived
   $: selectedProfile = selectedProfileId !== null ? profiles.find(p => p.id === selectedProfileId) : null;
 
-    function calculateProgress(currentXp: bigint): { percent: number, current: number, next: number } {
+    function calculateProgress(currentXp: bigint): { percent: number, current: number, next: number, level: number } {
       // Level = sqrt(xp / 100) + 1
       // XP for current level L: 100 * (L-1)^2
       // XP for next level L+1: 100 * L^2
@@ -95,9 +98,9 @@
       const levelTotal = nextLevelXp - currentLevelXp;
       
       // Avoid division by zero if level 1 (0 to 100)
-      if (levelTotal === 0) return { percent: 0, current: xp, next: nextLevelXp };
+      if (levelTotal === 0) return { percent: 0, current: xp, next: nextLevelXp, level: currentLevel };
       
-      return { percent: Math.min(100, Math.max(0, (levelProgress / levelTotal) * 100)), current: xp, next: nextLevelXp };
+      return { percent: Math.min(100, Math.max(0, (levelProgress / levelTotal) * 100)), current: xp, next: nextLevelXp, level: currentLevel };
   }
 
   function truncateAddress(addr: string) {
@@ -279,6 +282,9 @@
     let ironPickaxeBalance = 0n;
     let ironOreBalance = 0n;
     let coalOreBalance = 0n;
+    
+    let miningCharm = false;
+    let woodcuttingCharm = false;
 
     let miningLevel = 1n;
     let miningXp = 0n;
@@ -307,6 +313,8 @@
                 promises.push(publicClient.readContract({ address: itemsAddress as Address, abi: itemsAbi, functionName: 'balanceOf', args: [tbaAddress, 301n] })); // Iron Ore (Redundant)
                 promises.push(publicClient.readContract({ address: itemsAddress as Address, abi: itemsAbi, functionName: 'balanceOf', args: [tbaAddress, 302n] })); // Coal Ore
                 promises.push(publicClient.readContract({ address: itemsAddress as Address, abi: itemsAbi, functionName: 'balanceOf', args: [tbaAddress, 1n] })); // Gold
+                promises.push(publicClient.readContract({ address: itemsAddress as Address, abi: itemsAbi, functionName: 'balanceOf', args: [tbaAddress, 401n] })); // Mining Charm
+                promises.push(publicClient.readContract({ address: itemsAddress as Address, abi: itemsAbi, functionName: 'balanceOf', args: [tbaAddress, 402n] })); // Woodcutting Charm
             } else {
                  if (CONTRACT_ADDRESSES.SkillerGold) {
                      // Simplified V1 Gold handling
@@ -325,6 +333,8 @@
                 ironOreBalance = results[6] as bigint;
                 coalOreBalance = results[7] as bigint;
                 goldBalance = results[8] as bigint;
+                miningCharm = (results[9] as bigint) > 0n;
+                woodcuttingCharm = (results[10] as bigint) > 0n;
             }
         }
 
@@ -407,7 +417,9 @@
         ironPickaxeBalance,
         ironOreBalance,
         coalOreBalance,
-        tbaBalance
+        tbaBalance,
+        miningCharm,
+        woodcuttingCharm
     };
   }
 
@@ -522,18 +534,67 @@
         
         if (action === 'chop') {
             const hasIronAxe = (selectedProfile?.ironAxeBalance || 0n) > 0n;
-            const xpAmount = hasIronAxe ? 100 : 10;
-            const itemAmount = hasIronAxe ? 10 : 1;
+            const hasCharm = (selectedProfile?.woodcuttingCharm);
+            const currentLevel = Number(selectedProfile?.woodcuttingLevel || 1n); // Get current level
             
+            // Base * Level Multiplier
+            let xpBase = hasIronAxe ? 100 : 10;
+            let itemBase = hasIronAxe ? 10 : 1;
+            
+            if (hasCharm) {
+                xpBase *= 2;
+                itemBase *= 2;
+            }
+
+            const xpAmount = xpBase * currentLevel;
+            const itemAmount = itemBase * currentLevel;
+            
+            // Check for Level Up
+            // Get current XP from updated profile (reload has happened)
+            const newXp = Number(selectedProfile?.woodcuttingXp || 0n);
+            const newLevel = calculateProgress(BigInt(newXp)).level;
+            
+            // We can infer if we leveled up if the previous level (which we don't have stored unless passed)
+            // Alternative: Calculate level for (newXp - xpAmount). If < newLevel, we leveled up.
+            const oldXp = newXp - xpAmount;
+            const oldLevel = Math.floor(Math.sqrt(oldXp / 100)) + 1;
+            
+            if (newLevel > oldLevel) {
+                showToast(`Level Up! Woodcutting ${newLevel}`, 'level-up');
+            }
+
             showToast(`+${xpAmount} Woodcutting XP`, 'woodcutting-xp');
-            showToast(`+${itemAmount} Oak Log${itemAmount > 1 ? 's' : ''}`, 'item-received');
+            showToast(`+${itemAmount} Oak Log${itemAmount > 1 ? 's' : ''}`, 'item-log');
         } else if (action === 'mine') {
             const hasIronPickaxe = (selectedProfile?.ironPickaxeBalance || 0n) > 0n;
-            const xpAmount = hasIronPickaxe ? 100 : 10;
-            const itemAmount = hasIronPickaxe ? 10 : 1;
+            const hasCharm = (selectedProfile?.miningCharm);
+            const currentLevel = Number(selectedProfile?.miningLevel || 1n); // Get current level
+
+            // Base * Level Multiplier
+            let xpBase = hasIronPickaxe ? 100 : 10;
+            let itemBase = hasIronPickaxe ? 10 : 1;
+            
+            if (hasCharm) {
+                xpBase *= 2;
+                itemBase *= 2;
+            }
+
+            const xpAmount = xpBase * currentLevel;
+            const itemAmount = itemBase * currentLevel;
+
+            // Check for Level Up
+            const newXp = Number(selectedProfile?.miningXp || 0n);
+            const newLevel = calculateProgress(BigInt(newXp)).level;
+            
+            const oldXp = newXp - xpAmount;
+            const oldLevel = Math.floor(Math.sqrt(oldXp / 100)) + 1;
+            
+            if (newLevel > oldLevel) {
+                showToast(`Level Up! Mining ${newLevel}`, 'level-up');
+            }
 
             showToast(`+${xpAmount} Mining XP`, 'mining-xp');
-            showToast(`+${itemAmount} Iron Ore`, 'item-received');
+            showToast(`+${itemAmount} Iron Ore`, 'item-ore');
         } else {
              showToast('Action Complete!', 'inventory');
         }
@@ -743,7 +804,8 @@
       // Quest Config
       const questMap = {
           1: { id: 201n, amount: 20n, name: 'Oak Logs' },
-          2: { id: 301n, amount: 20n, name: 'Iron Ore' }
+          2: { id: 301n, amount: 20n, name: 'Iron Ore' },
+          3: { id: 1n, amount: 1000n * 10n**18n, name: 'Gold Coins' }
       };
       const quest = questMap[questId as keyof typeof questMap];
       if (!quest) return;
@@ -856,6 +918,7 @@
             args: [itemsAddr, 0n, transferData, 0n]
         });
 
+        const initialGold = selectedProfile.goldBalance || 0n;
         const hash = await walletClient.writeContract(request);
         showToast(`Contributing ${quest.name}...`);
         await publicClient.waitForTransactionReceipt({ hash });
@@ -863,12 +926,76 @@
         // Reload profiles first so the balance updates visually when the spinner stops
         await loadProfiles(true);
         
-        showToast('Quest Completed!', 'inventory');
-        showToast('+100 Gold Coins', 'item-received');
+        if (questId === 3) {
+             // Calculate reward based on balance change
+             const updatedProfile = profiles.find(p => p.id === selectedProfile!.id);
+             const finalGold = updatedProfile?.goldBalance || initialGold;
+             const cost = 1000n * 10n**18n;
+             
+             // Reward = Final - (Initial - Cost)
+             // If reward is 0 (lost everything), it will show +0 Gold Coins which is correct
+             const rewardWei = finalGold - initialGold + cost;
+             const rewardFormatted = Math.floor(Number(rewardWei) / 1e18);
+
+             showToast('Quest Completed!', 'inventory');
+             showToast(`+${rewardFormatted} Gold Coins`, 'item-received');
+        } else {
+             showToast('Quest Completed!', 'inventory');
+             showToast('+100 Gold Coins', 'item-received');
+        }
 
       } catch (e: any) {
           console.error("Quest failed:", e);
           showToast(`Quest failed: ${e.message}`, 'error');
+      } finally {
+          actionLoading = null;
+      }
+  }
+
+  async function handleBuy(item: 'mining-charm' | 'woodcutting-charm') {
+      if (!account || actionLoading || !selectedProfile) return;
+      actionLoading = 'buy';
+      
+      try {
+        const walletClient = await getWalletClient(config);
+        const publicClient = getPublicClient(config);
+        const address = CONTRACT_ADDRESSES.Diamond as Address;
+        const abi = ABIS.GameDiamond; // We need to add buyItem to ABI or use a temporary snippet if it's not in the main definition yet
+        // Since we just deployed, the ABI in frontend might be outdated.
+        // We can manually add the function signature for now or rely on wagmi if ABIS is updated.
+        // Let's assume we need to update ABIS or use a local partial ABI.
+        
+        const itemId = item === 'mining-charm' ? 401n : 402n;
+
+        const { request } = await publicClient.simulateContract({
+            account,
+            address,
+            abi: [...ABIS.GameDiamond, {
+                "inputs": [
+                    { "internalType": "uint256", "name": "itemId", "type": "uint256" },
+                    { "internalType": "uint256", "name": "tokenId", "type": "uint256" }
+                ],
+                "name": "buyItem",
+                "outputs": [],
+                "stateMutability": "nonpayable",
+                "type": "function"
+            }],
+            functionName: 'buyItem',
+            args: [itemId, selectedProfile.id]
+        });
+        
+        const hash = await walletClient.writeContract(request);
+        showToast('Buying...');
+        await publicClient.waitForTransactionReceipt({ hash });
+        
+        await loadProfiles(true);
+        showToast('Purchase Complete!', 'inventory');
+        showToast(item === 'mining-charm' ? '+1 Mining Charm' : '+1 Woodcutting Charm', 'item-received');
+        
+        showShop = false;
+      } catch (e: any) {
+          console.error("Buy failed:", e);
+          showToast(`Buy failed: ${e.message}`, 'error');
       } finally {
           actionLoading = null;
       }
@@ -1569,6 +1696,74 @@
         </div>
     {/if}
     
+    <!-- Shop Modal -->
+    {#if showShop}
+        <div class="modal-backdrop" on:click={() => showShop = false}>
+            <div class="modal-content shop-modal" on:click|stopPropagation>
+                
+                <div class="items-grid">
+                    <!-- Mining Charm -->
+                    <div class="item-card" class:owned={selectedProfile?.miningCharm}>
+                        <div class="charm-icon-wrapper rock">
+                             <Gem size={28} color="#b0bec5"/>
+                             <div class="charm-icon-overlay">
+                                 <Mountain size={14} color="#b0bec5"/>
+                             </div>
+                        </div>
+                        <h4>Rock Charm</h4>
+                        <!-- Removed description -->
+                        
+                        {#if selectedProfile?.miningCharm}
+                            <div class="owned-badge">Owned</div>
+                        {:else}
+                             <div class="cost-text">Cost: 200 Gold Coins</div>
+                            <button 
+                                class="action-btn" 
+                                on:click={() => handleBuy('mining-charm')}
+                                disabled={!!actionLoading || (selectedProfile?.goldBalance || 0n) < 200n * 10n**18n}
+                            >
+                                {#if actionLoading === 'buy'}
+                                    <div class="spinner-small"></div>
+                                {:else}
+                                    Buy
+                                {/if}
+                            </button>
+                        {/if}
+                    </div>
+
+                    <!-- Woodcutting Charm -->
+                    <div class="item-card" class:owned={selectedProfile?.woodcuttingCharm}>
+                        <div class="charm-icon-wrapper tree">
+                             <Gem size={28} color="#4ade80"/>
+                             <div class="charm-icon-overlay">
+                                 <TreeDeciduous size={14} color="#4ade80"/>
+                             </div>
+                        </div>
+                        <h4>Tree Charm</h4>
+                        <!-- Removed description -->
+                        
+                        {#if selectedProfile?.woodcuttingCharm}
+                             <div class="owned-badge">Owned</div>
+                        {:else}
+                            <div class="cost-text">Cost: 200 Gold Coins</div>
+                            <button 
+                                class="action-btn" 
+                                on:click={() => handleBuy('woodcutting-charm')}
+                                disabled={!!actionLoading || (selectedProfile?.goldBalance || 0n) < 200n * 10n**18n}
+                            >
+                                {#if actionLoading === 'buy'}
+                                    <div class="spinner-small"></div>
+                                {:else}
+                                    Buy
+                                {/if}
+                            </button>
+                        {/if}
+                    </div>
+                </div>
+            </div>
+        </div>
+    {/if}
+    
     <!-- Quests Modal -->
     {#if showQuests}
         <div class="modal-backdrop" on:click={() => showQuests = false}>
@@ -1600,7 +1795,7 @@
 
                     <!-- Quest 2: Iron Ore -->
                     <div class="quest-card">
-                         <div class="quest-icon"><Mountain size={24} color="#b0bec5"/></div>
+                        <div class="quest-icon"><Mountain size={24} color="#b0bec5"/></div>
                         <div class="quest-info">
                             <h4>Miner's Request</h4>
                             <div class="cost">
@@ -1614,6 +1809,29 @@
                             disabled={!!actionLoading || (selectedProfile?.ironOreBalance || 0n) < 20n}
                         >
                             {#if actionLoading === 'quest-2'}
+                                <div class="spinner-small"></div>
+                            {:else}
+                                Give
+                            {/if}
+                        </button>
+                    </div>
+
+                    <!-- Quest 3: King's Tribute -->
+                    <div class="quest-card">
+                        <div class="quest-icon"><Coins size={24} color="#ffd700"/></div>
+                        <div class="quest-info">
+                            <h4>King's Tribute</h4>
+                            <div class="cost">
+                                <span>Contribute 1000 Gold</span>
+                                <span style="color: #ffd700;">Reward: ???</span>
+                            </div>
+                        </div>
+                        <button 
+                            class="quest-btn" 
+                            on:click={() => handleQuest(3)}
+                            disabled={!!actionLoading || (selectedProfile?.goldBalance || 0n) < 1000n * 10n**18n}
+                        >
+                            {#if actionLoading === 'quest-3'}
                                 <div class="spinner-small"></div>
                             {:else}
                                 Give
@@ -1794,9 +2012,12 @@
                 </button>
             </div>
             <div class="footer-center">
-                <!-- Skills button visible for all -->
+                <!-- Center Group: Shop, Skills, Crafting -->
                 {#if selectedProfile}
                      <div style="display: flex; gap: 8px;">
+                        <button class="square-btn" on:click={() => showShop = !showShop}>
+                            <Store size={24} />
+                        </button>
                         <button class="square-btn" on:click={() => showSkills = !showSkills}>
                             <BarChart3 size={24} />
                         </button>
@@ -1944,6 +2165,52 @@
         animation: fadeIn 0.2s ease;
     }
     
+    .item-card.owned {
+        border-color: #4ade80;
+        background: rgba(74, 222, 128, 0.05);
+    }
+
+    .item-card h4 {
+        margin: 0;
+        font-size: 0.9rem;
+        color: #fff;
+    }
+
+    .item-card .desc {
+        font-size: 0.7rem;
+        color: #aaa;
+        margin: 0;
+        line-height: 1.2;
+    }
+
+    .owned-badge {
+        background: #4ade80;
+        color: black;
+        font-size: 0.7rem;
+        font-weight: bold;
+        padding: 0.2rem 0.5rem;
+        border-radius: 12px;
+        margin-top: 0.5rem;
+    }
+
+    .action-btn {
+        background: #2563eb;
+        color: white;
+        border: none;
+        padding: 0.4rem 0.8rem;
+        border-radius: 6px;
+        cursor: pointer;
+        font-size: 0.8rem;
+        width: 100%;
+        margin-top: 0.5rem;
+    }
+
+    .action-btn:disabled {
+        background: #333;
+        color: #555;
+        cursor: not-allowed;
+    }
+    
     .send-modal {
         top: 50%;
         left: 50%;
@@ -2013,6 +2280,106 @@
         overflow-y: auto;
         min-width: unset; /* Override previous min-width */
         bottom: unset; /* Override previous bottom */
+    }
+
+    /* Shop Modal Styles */
+    .shop-modal {
+        top: 50%;
+        left: 50%;
+        transform: translate(-50%, -50%);
+        width: 320px;
+        max-height: 80vh;
+        overflow-y: auto;
+    }
+
+    .charm-icon-wrapper {
+        width: 48px;
+        height: 48px;
+        border-radius: 50%;
+        border: 2px solid;
+        display: flex;
+        justify-content: center;
+        align-items: center;
+        margin-bottom: 0.5rem;
+        background: rgba(0,0,0,0.3);
+        position: relative;
+    }
+    
+    .charm-icon-wrapper.rock { border-color: #b0bec5; }
+    .charm-icon-wrapper.tree { border-color: #4ade80; }
+    
+    .charm-icon-overlay {
+        position: absolute;
+        bottom: -2px;
+        right: -2px;
+        background: #1e1e1e;
+        border-radius: 50%;
+        padding: 2px;
+    }
+
+    .items-grid {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 1rem;
+    }
+
+    .item-card {
+        background: #252525;
+        border: 1px solid #333;
+        border-radius: 12px;
+        padding: 1rem;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        text-align: center;
+        gap: 0.5rem;
+        transition: transform 0.2s, border-color 0.2s;
+    }
+
+    .item-card.owned {
+        border-color: #4ade80;
+        background: rgba(74, 222, 128, 0.05);
+    }
+
+    .item-card h4 {
+        margin: 0;
+        font-size: 0.9rem;
+        color: #fff;
+    }
+
+    .item-card .desc {
+        font-size: 0.7rem;
+        color: #aaa;
+        margin: 0;
+        line-height: 1.2;
+    }
+
+    .owned-badge {
+        background: #4ade80;
+        color: black;
+        font-size: 0.7rem;
+        font-weight: bold;
+        padding: 0.2rem 0.5rem;
+        border-radius: 12px;
+        margin-top: 0.5rem;
+    }
+
+    .action-btn {
+        background: #2563eb;
+        color: white;
+        border: none;
+        padding: 0.4rem 0.8rem;
+        border-radius: 6px;
+        cursor: pointer;
+        font-size: 0.8rem;
+        width: 100%;
+        margin-top: 0.5rem;
+    }
+
+    .action-btn:disabled {
+        background: #333;
+        color: #555;
+        cursor: not-allowed;
     }
     
     .skills-list {
@@ -2096,7 +2463,7 @@
     footer { border-bottom: none; border-top: 1px solid #222; }
     .app-icon { width: 56px; height: 56px; border-radius: 16px; overflow: hidden; border: 1px solid #333; }
     .app-icon img { width: 100%; height: 100%; object-fit: cover; }
-    .header-left, .header-right, .footer-left, .footer-right { width: 56px; display: flex; align-items: center; }
+    .header-left, .header-right, .footer-left, .footer-right { min-width: 56px; display: flex; align-items: center; }
     .header-left, .footer-left { justify-content: flex-start; }
     .header-right, .footer-right { justify-content: flex-end; }
     .header-center, .footer-center { flex: 1; display: flex; justify-content: center; }
@@ -2183,9 +2550,13 @@
     .action-btn.claim { background: #0288d1; color: white; }
     .error-banner { background: #cf6679; color: black; padding: 1rem; border-radius: 12px; margin-bottom: 1rem; text-align: center; }
     /* purple theme for xp */
-    .toast.woodcutting-xp { background: #252525; border-left: 4px solid #4ade80; color: #4ade80; }
-    .toast.mining-xp { background: #252525; border-left: 4px solid #b0bec5; color: #b0bec5; }
+    .toast.woodcutting-xp { background: #252525; border-left: 4px solid #9c27b0; color: #9c27b0; }
+    .toast.mining-xp { background: #252525; border-left: 4px solid #9c27b0; color: #9c27b0; }
     .toast.item-received { background: #252525; border-left: 4px solid #ffd700; color: #ffd700; }
+    .toast.level-up { background: #252525; border-left: 4px solid #9c27b0; color: #9c27b0; }
+    .toast.item-log { background: #252525; border-left: 4px solid #4ade80; color: #4ade80; }
+    .toast.item-ore { background: #252525; border-left: 4px solid #b0bec5; color: #b0bec5; }
+    .toast.item-gold { background: #252525; border-left: 4px solid #ffd700; color: #ffd700; }
     .toast-container {
         position: absolute;
         top: 1rem;

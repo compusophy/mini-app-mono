@@ -42,7 +42,7 @@ async function main() {
       console.log("Error adding QuestFacet:", e.message);
       // Check if it's because selector exists (maybe I deployed it before?)
       // If so, try replace
-      if (e.message.includes("Function already exists")) {
+      if (e.message.includes("Can't add function that already exists") || e.message.includes("Function already exists")) {
           console.log("Trying Replace...");
            const cutReplace = [{
               facetAddress: questFacet.target,
