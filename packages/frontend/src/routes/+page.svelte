@@ -179,6 +179,7 @@
     if (!publicClient) return;
 
     if (!silent) isLoadingProfiles = true;
+    errorMsg = null;
 
     try {
         const loadedProfiles: Profile[] = [];
@@ -193,14 +194,22 @@
             });
 
             for (let i = 0n; i < balanceV1; i++) {
-                const tokenId = await publicClient.readContract({
-                    address: CONTRACT_ADDRESSES.SkillerProfile as Address,
-                    abi: ABIS.SkillerProfile,
-                    functionName: 'tokenOfOwnerByIndex',
-                    args: [account, i]
-                });
-                const profileData = await getProfileData(tokenId, publicClient, 'v1');
-                loadedProfiles.push(profileData);
+                try {
+                    const tokenId = await publicClient.readContract({
+                        address: CONTRACT_ADDRESSES.SkillerProfile as Address,
+                        abi: ABIS.SkillerProfile,
+                        functionName: 'tokenOfOwnerByIndex',
+                        args: [account, i]
+                    });
+                    const profileData = await getProfileData(tokenId, publicClient, 'v1');
+                    loadedProfiles.push(profileData);
+                } catch (e: any) {
+                    if (e.message?.includes('ERC721OutOfBoundsIndex') || e.message?.includes('out of bounds')) {
+                        console.warn("Caught V1 index out of bounds (stale balance?), stopping loop.");
+                        break;
+                    }
+                    throw e;
+                }
             }
         }
 
@@ -214,14 +223,22 @@
             });
 
             for (let i = 0n; i < balanceV2; i++) {
-                const tokenId = await publicClient.readContract({
-                    address: CONTRACT_ADDRESSES.SkillerProfileV2 as Address,
-                    abi: ABIS.SkillerProfileV2,
-                    functionName: 'tokenOfOwnerByIndex',
-                    args: [account, i]
-                });
-                const profileData = await getProfileData(tokenId, publicClient, 'v2');
-                loadedProfiles.push(profileData);
+                try {
+                    const tokenId = await publicClient.readContract({
+                        address: CONTRACT_ADDRESSES.SkillerProfileV2 as Address,
+                        abi: ABIS.SkillerProfileV2,
+                        functionName: 'tokenOfOwnerByIndex',
+                        args: [account, i]
+                    });
+                    const profileData = await getProfileData(tokenId, publicClient, 'v2');
+                    loadedProfiles.push(profileData);
+                } catch (e: any) {
+                     if (e.message?.includes('ERC721OutOfBoundsIndex') || e.message?.includes('out of bounds')) {
+                        console.warn("Caught V2 index out of bounds (stale balance?), stopping loop.");
+                        break;
+                    }
+                    throw e;
+                }
             }
         }
 
@@ -882,6 +899,13 @@
         
         await loadProfiles(true);
         showToast('Crafting Complete!', 'inventory');
+        
+        if (item === 'iron-axe') {
+            showToast('+1 Iron Axe', 'item-received');
+        } else if (item === 'iron-pickaxe') {
+            showToast('+1 Iron Pickaxe', 'item-received');
+        }
+
         showCrafting = false;
       } catch (e: any) {
           console.error("Crafting failed:", e);
