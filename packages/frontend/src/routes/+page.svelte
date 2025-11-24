@@ -394,6 +394,27 @@
     };
   }
 
+  async function refreshCurrentProfile() {
+      if (!selectedProfile || !account) return;
+      
+      actionLoading = 'refresh-profile';
+      
+      try {
+          const publicClient = getPublicClient(config);
+          const freshProfile = await getProfileData(selectedProfile.id, publicClient, selectedProfile.version);
+          
+          // Update the specific profile in the array
+          profiles = profiles.map(p => p.id === freshProfile.id ? freshProfile : p);
+          
+          showToast('Profile Updated', 'inventory');
+      } catch (e) {
+          console.error("Refresh failed:", e);
+          showToast("Failed to refresh", 'error');
+      } finally {
+          actionLoading = null;
+      }
+  }
+
   async function handleMigrate(tokenId: bigint) {
       if (!account || actionLoading) return;
       actionLoading = 'migrate';

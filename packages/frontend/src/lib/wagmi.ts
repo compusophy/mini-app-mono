@@ -5,7 +5,7 @@ import { farcasterMiniApp } from '@farcaster/miniapp-wagmi-connector'
 export const config = createConfig({
   chains: [base],
   transports: {
-    [base.id]: http('https://api.developer.coinbase.com/rpc/v1/base/78zLUgDaakNSuRxuMTNU17MSqxQoQhbd'),
+    [base.id]: http('https://base-mainnet.g.alchemy.com/v2/lAQgFlVx6Of50g3XX4YDP'),
   },
   connectors: [
     farcasterMiniApp()
