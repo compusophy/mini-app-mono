@@ -88,34 +88,42 @@
   // Derived
   $: selectedProfile = selectedProfileId !== null ? profiles.find(p => p.id === selectedProfileId) : null;
 
-  function toggleModal(modal: 'inventory' | 'profile' | 'skills' | 'quests' | 'leaderboard' | 'shop' | 'crafting') {
-      // If the target is already open, close it
-      if (modal === 'inventory' && showInventory) { showInventory = false; return; }
-      if (modal === 'profile' && showProfile) { showProfile = false; return; }
-      if (modal === 'skills' && showSkills) { showSkills = false; return; }
-      if (modal === 'quests' && showQuests) { showQuests = false; return; }
-      if (modal === 'leaderboard' && showLeaderboard) { showLeaderboard = false; return; }
-      if (modal === 'shop' && showShop) { showShop = false; return; }
-      if (modal === 'crafting' && showCrafting) { showCrafting = false; return; }
+    function toggleModal(modal: 'inventory' | 'profile' | 'skills' | 'quests' | 'leaderboard' | 'shop' | 'crafting') {
+        // If the target is already open, close it
+        if (modal === 'inventory' && showInventory) { showInventory = false; return; }
+        if (modal === 'profile' && showProfile) { showProfile = false; return; }
+        if (modal === 'skills' && showSkills) { showSkills = false; return; }
+        if (modal === 'quests' && showQuests) { showQuests = false; return; }
+        if (modal === 'leaderboard' && showLeaderboard) { showLeaderboard = false; return; }
+        if (modal === 'shop' && showShop) { showShop = false; return; }
+        if (modal === 'crafting' && showCrafting) { showCrafting = false; return; }
 
-      // Close all others
-      showInventory = false;
-      showProfile = false;
-      showSkills = false;
-      showQuests = false;
-      showLeaderboard = false;
-      showShop = false;
-      showCrafting = false;
+        // Close all others
+        closeAllModals();
 
-      // Open target
-      if (modal === 'inventory') showInventory = true;
-      if (modal === 'profile') showProfile = true;
-      if (modal === 'skills') showSkills = true;
-      if (modal === 'quests') showQuests = true;
-      if (modal === 'leaderboard') showLeaderboard = true;
-      if (modal === 'shop') showShop = true;
-      if (modal === 'crafting') showCrafting = true;
-  }
+        // Open target
+        if (modal === 'inventory') showInventory = true;
+        if (modal === 'profile') showProfile = true;
+        if (modal === 'skills') showSkills = true;
+        if (modal === 'quests') showQuests = true;
+        if (modal === 'leaderboard') showLeaderboard = true;
+        if (modal === 'shop') showShop = true;
+        if (modal === 'crafting') showCrafting = true;
+    }
+
+    function closeAllModals() {
+        showInventory = false;
+        showProfile = false;
+        showSkills = false;
+        showQuests = false;
+        showLeaderboard = false;
+        showShop = false;
+        showCrafting = false;
+        // Also close details
+        selectedItem = null; 
+        showBurnConfirmation = false;
+        showFundConfirmation = false;
+    }
 
   function calculateProgress(currentXp: bigint): { percent: number, current: number, next: number, level: number } {
       const xp = Number(currentXp);
@@ -1559,7 +1567,7 @@
     <header>
         <div class="header-left">
             {#if selectedProfile}
-                <button class="square-btn" on:click={() => selectedProfileId = null}>
+                <button class="square-btn" on:click={() => { selectedProfileId = null; closeAllModals(); }}>
                     <ArrowLeft size={24} />
                 </button>
             {:else}
@@ -2152,6 +2160,10 @@
                             <span class="label">Void Level</span>
                             <span class="value">{selectedProfile?.voidLevel || 0}</span>
                         </div>
+                        <div class="stat-box">
+                            <span class="label">Rank</span>
+                            <span class="value">#{leaderboardData.findIndex(e => e.tokenId === selectedProfile?.id) !== -1 ? leaderboardData.findIndex(e => e.tokenId === selectedProfile?.id) + 1 : '-'}</span>
+                        </div>
                     </div>
                 </div>
     
@@ -2159,6 +2171,7 @@
                     <div class="recipe-card" style="border-color: #9c27b0;">
                         <div class="recipe-icon"><Trophy size={24} color="#9c27b0"/></div>
                         <div class="recipe-info">
+                            <h4>VOID LEVEL {(selectedProfile?.voidLevel || 0n) + 1n}</h4>
                             <div class="cost">
                                 <span>{formatRsNumber(voidCost)} Oak Logs</span>
                                 <span>{formatRsNumber(voidCost)} Iron Ore</span>
@@ -2434,7 +2447,7 @@
         padding: 0.5rem;
         border-radius: 8px;
         margin-top: 0.5rem;
-        margin-bottom: 1rem;
+        margin-bottom: 0;
         cursor: pointer;
         font-size: 0.8rem;
     }
@@ -2907,7 +2920,7 @@
     .info-row { display: flex; justify-content: space-between; gap: 1rem; margin-bottom: 0.5rem; font-size: 0.9rem; }
     .info-row .label { color: #888; }
     .info-row .value { color: #aaa; font-family: monospace; cursor: pointer; }
-    .burn-section { margin-top: 1.5rem; display: flex; justify-content: center; border-top: 1px solid #333; padding-top: 1rem; }
+    .burn-section { margin-top: 1rem; display: flex; justify-content: center; border-top: 1px solid #333; padding-top: 1rem; }
     .burn-trigger-btn { 
         background: rgba(207, 102, 121, 0.1); 
         color: #cf6679; 
@@ -3100,7 +3113,7 @@
         min-width: 80px;
     }
 
-    .leaderboard-section { flex: 1; overflow: hidden; display: flex; flex-direction: column; border-top: 1px solid #333; padding-top: 0.5rem; }
+    .leaderboard-section { flex: 1; overflow: hidden; display: flex; flex-direction: column; padding-top: 0.5rem; }
     .leaderboard-list { overflow-y: auto; flex: 1; display: flex; flex-direction: column; gap: 4px; max-height: 200px; }
     .leaderboard-row { display: flex; align-items: center; padding: 0.5rem; background: #252525; border-radius: 6px; border: 1px solid #333; }
     .leaderboard-row.highlight { border-color: #9c27b0; background: rgba(156, 39, 176, 0.1); }
