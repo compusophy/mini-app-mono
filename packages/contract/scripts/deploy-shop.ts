@@ -32,27 +32,29 @@ async function main() {
       functionSelectors: shopSelectors
   }];
 
-  console.log("Adding ShopFacet...");
-  try {
-      const tx = await diamondCut.diamondCut(cutShop, ethers.ZeroAddress, "0x");
-      await tx.wait();
-      console.log("✓ ShopFacet Added");
-  } catch (e: any) {
-      if (e.message.includes("Function already exists")) {
-          console.log("ShopFacet exists, trying Replace...");
-          const cutReplace = [{
-              facetAddress: shopFacet.target,
-              action: 1, // Replace
-              functionSelectors: shopSelectors
-          }];
-          const tx = await diamondCut.diamondCut(cutReplace, ethers.ZeroAddress, "0x");
-          await tx.wait();
-          console.log("✓ ShopFacet Replaced");
-      } else {
-          console.error("Error adding ShopFacet:", e.message);
-      }
-  }
+    console.log("Adding ShopFacet...");
+    try {
+        const tx = await diamondCut.diamondCut(cutShop, ethers.ZeroAddress, "0x");
+        await tx.wait();
+        console.log("✓ ShopFacet Added");
+    } catch (e: any) {
+        // Hardhat error message handling for function already exists
+        if (e.message.includes("Function already exists") || e.message.includes("LibDiamondCut: Can't add function that already exists")) {
+            console.log("ShopFacet exists, trying Replace...");
+            const cutReplace = [{
+                facetAddress: shopFacet.target,
+                action: 1, // Replace
+                functionSelectors: shopSelectors
+            }];
+            const tx = await diamondCut.diamondCut(cutReplace, ethers.ZeroAddress, "0x");
+            await tx.wait();
+            console.log("✓ ShopFacet Replaced");
+        } else {
+            console.error("Error adding ShopFacet:", e.message);
+        }
+    }
 
+  /*
   // 2. Update MiningFacet and WoodcuttingFacet
   console.log("Deploying updated Mining & Woodcutting Facets...");
   
@@ -100,6 +102,7 @@ async function main() {
   const tx2 = await diamondCut.diamondCut(cutUpdate, ethers.ZeroAddress, "0x");
   await tx2.wait();
   console.log("✓ Facets Updated");
+  */
 }
 
 main().catch((error) => {

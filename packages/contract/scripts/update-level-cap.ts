@@ -9,7 +9,7 @@ async function main() {
   const addressPath = path.join(__dirname, "../../frontend/src/lib/addresses.json");
   const addresses = JSON.parse(fs.readFileSync(addressPath, "utf8"));
   
-  console.log("Updating Facets with Level Cap (100) using account:", deployer.address);
+  console.log("Updating Facets with Level Cap (200) using account:", deployer.address);
 
   const diamondCut = await ethers.getContractAt("IDiamondCut", addresses.Diamond);
 
@@ -24,6 +24,12 @@ async function main() {
   const woodcuttingFacet = await WoodcuttingFacet.deploy();
   await woodcuttingFacet.waitForDeployment();
   console.log("✓ WoodcuttingFacet deployed at:", woodcuttingFacet.target);
+
+  // 3. Deploy updated StatsFacet
+  const StatsFacet = await ethers.getContractFactory("StatsFacet");
+  const statsFacet = await StatsFacet.deploy();
+  await statsFacet.waitForDeployment();
+  console.log("✓ StatsFacet deployed at:", statsFacet.target);
   
   const getSelectors = (contract: any) => {
       const sels = [];
@@ -37,6 +43,7 @@ async function main() {
 
   const miningSelectors = getSelectors(MiningFacet);
   const woodcuttingSelectors = getSelectors(WoodcuttingFacet);
+  const statsSelectors = getSelectors(StatsFacet);
 
   const cutUpdate = [
       {
@@ -48,13 +55,18 @@ async function main() {
           facetAddress: woodcuttingFacet.target,
           action: 1, // Replace
           functionSelectors: woodcuttingSelectors
+      },
+      {
+          facetAddress: statsFacet.target,
+          action: 1, // Replace
+          functionSelectors: statsSelectors
       }
   ];
 
   console.log("Replacing Facet Selectors...");
   const tx = await diamondCut.diamondCut(cutUpdate, ethers.ZeroAddress, "0x");
   await tx.wait();
-  console.log("✓ Mining & Woodcutting Facets Updated with Level Cap");
+  console.log("✓ Mining, Woodcutting, & Stats Facets Updated with Level Cap 200");
 }
 
 main().catch((error) => {

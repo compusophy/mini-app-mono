@@ -22,9 +22,9 @@ contract ShopFacet {
         uint256 cost = 0;
 
         if (itemId == MINING_CHARM) {
-            cost = 200 * 10**18; // 200 Gold
+            cost = 500 * 10**18; // 500 Gold
         } else if (itemId == WOODCUTTING_CHARM) {
-            cost = 200 * 10**18; // 200 Gold
+            cost = 500 * 10**18; // 500 Gold
         } else {
             revert("Shop: Invalid Item ID");
         }

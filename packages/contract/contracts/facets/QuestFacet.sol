@@ -35,17 +35,17 @@ contract QuestFacet is IERC1155Receiver {
         uint256 questId = abi.decode(data, (uint256));
         
         if (questId == 1) {
-            // Contribute 20 Oak Logs
+            // Contribute 50 Oak Logs
             require(id == OAK_LOG, "Quest 1: Must be Oak Logs");
-            require(value == 20, "Quest 1: Must be 20 items");
+            require(value == 50, "Quest 1: Must be 50 items");
             
             // Reward: 100 Gold
             gs.items.mint(from, GOLD_COINS, 100 * 10**18, "");
             emit QuestCompleted(from, questId, 100 * 10**18);
         } else if (questId == 2) {
-             // Contribute 20 Iron Ore
+             // Contribute 50 Iron Ore
              require(id == IRON_ORE, "Quest 2: Must be Iron Ore");
-             require(value == 20, "Quest 2: Must be 20 items");
+             require(value == 50, "Quest 2: Must be 50 items");
              
              gs.items.mint(from, GOLD_COINS, 100 * 10**18, "");
              emit QuestCompleted(from, questId, 100 * 10**18);

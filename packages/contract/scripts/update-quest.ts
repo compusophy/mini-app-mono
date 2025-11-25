@@ -9,7 +9,7 @@ async function main() {
   const addressPath = path.join(__dirname, "../../frontend/src/lib/addresses.json");
   const addresses = JSON.parse(fs.readFileSync(addressPath, "utf8"));
   
-  console.log("Updating QuestFacet with account:", deployer.address);
+  console.log("Updating QuestFacet (50 logs/ore) with account:", deployer.address);
   
   const QuestFacet = await ethers.getContractFactory("QuestFacet");
   const questFacet = await QuestFacet.deploy();
@@ -34,18 +34,12 @@ async function main() {
   }];
 
   console.log("Cutting Diamond...");
-  try {
-      const tx = await diamondCut.diamondCut(cut, ethers.ZeroAddress, "0x");
-      await tx.wait();
-      console.log("✓ QuestFacet Replaced");
-  } catch (e: any) {
-      console.log("Error replacing QuestFacet:", e.message);
-      throw e;
-  }
+  const tx = await diamondCut.diamondCut(cut, ethers.ZeroAddress, "0x");
+  await tx.wait();
+  console.log("✓ QuestFacet Updated");
 }
 
 main().catch((error) => {
   console.error(error);
   process.exitCode = 1;
 });
-

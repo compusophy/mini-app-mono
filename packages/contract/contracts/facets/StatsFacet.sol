@@ -20,9 +20,19 @@ contract StatsFacet {
     }
 
     function getLevel(uint256 xp) internal pure returns (uint256) {
-        uint256 level = sqrt(xp / 100) + 1;
-        if (level > 100) {
-            return 100;
+        uint256 LEVEL_100_XP = 980100; // 100 * (100-1)^2
+
+        if (xp <= LEVEL_100_XP) {
+            return sqrt(xp / 100) + 1;
+        }
+
+        // For levels > 100, the xp requirement gap is 100x larger.
+        // Normalized XP = 980100 + (xp - 980100) / 100
+        uint256 normalizedXp = LEVEL_100_XP + (xp - LEVEL_100_XP) / 100;
+        uint256 level = sqrt(normalizedXp / 100) + 1;
+
+        if (level > 200) {
+            return 200;
         }
         return level;
     }

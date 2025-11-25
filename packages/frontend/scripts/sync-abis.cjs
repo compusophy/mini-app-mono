@@ -12,6 +12,10 @@ const ARTIFACTS = {
     'WoodcuttingFacet': 'facets/WoodcuttingFacet.sol/WoodcuttingFacet.json',
     'MiningFacet': 'facets/MiningFacet.sol/MiningFacet.json',
     'CraftingFacet': 'facets/CraftingFacet.sol/CraftingFacet.json',
+    'StatsFacet': 'facets/StatsFacet.sol/StatsFacet.json',
+    'ShopFacet': 'facets/ShopFacet.sol/ShopFacet.json',
+    'QuestFacet': 'facets/QuestFacet.sol/QuestFacet.json',
+    'VoidFacet': 'facets/VoidFacet.sol/VoidFacet.json',
     'Diamond': 'diamond/Diamond.sol/Diamond.json',
     
     // V1 Contracts that exist in artifacts
@@ -43,8 +47,21 @@ function readAbi(relativePath) {
 const woodcuttingAbi = readAbi(ARTIFACTS['WoodcuttingFacet']);
 const miningAbi = readAbi(ARTIFACTS['MiningFacet']);
 const craftingAbi = readAbi(ARTIFACTS['CraftingFacet']);
+const statsAbi = readAbi(ARTIFACTS['StatsFacet']);
+const shopAbi = readAbi(ARTIFACTS['ShopFacet']);
+const questAbi = readAbi(ARTIFACTS['QuestFacet']);
+const voidAbi = readAbi(ARTIFACTS['VoidFacet']);
+
 // Merge arrays, filtering duplicates? Or just concat. Ethers handles overload.
-const gameDiamondAbi = [...woodcuttingAbi, ...miningAbi, ...craftingAbi];
+const gameDiamondAbi = [
+    ...woodcuttingAbi, 
+    ...miningAbi, 
+    ...craftingAbi,
+    ...statsAbi,
+    ...shopAbi,
+    ...questAbi,
+    ...voidAbi
+];
 
 // Load V1 fallback
 let v1Abis = {};

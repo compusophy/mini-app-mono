@@ -89,21 +89,50 @@
   $: selectedProfile = selectedProfileId !== null ? profiles.find(p => p.id === selectedProfileId) : null;
 
     function calculateProgress(currentXp: bigint): { percent: number, current: number, next: number, level: number } {
-      // Level = sqrt(xp / 100) + 1
-      // XP for current level L: 100 * (L-1)^2
-      // XP for next level L+1: 100 * L^2
-      
       const xp = Number(currentXp);
-      const currentLevel = Math.floor(Math.sqrt(xp / 100)) + 1;
       
-      const currentLevelXp = 100 * Math.pow(currentLevel - 1, 2);
-      const nextLevelXp = 100 * Math.pow(currentLevel, 2);
+      const LEVEL_100_XP = 980100;
+      let currentLevel = 1;
+      let currentLevelXp = 0;
+      let nextLevelXp = 100;
+
+      if (xp <= LEVEL_100_XP) {
+          // Safety check for 0 or negative
+          if (xp < 0) {
+              return { percent: 0, current: 0, next: 100, level: 1 };
+          }
+          currentLevel = Math.floor(Math.sqrt(xp / 100)) + 1;
+          currentLevelXp = 100 * Math.pow(currentLevel - 1, 2);
+          nextLevelXp = 100 * Math.pow(currentLevel, 2);
+      } else {
+          // New Curve for > 100
+          const normalizedXp = LEVEL_100_XP + (xp - LEVEL_100_XP) / 100;
+          currentLevel = Math.floor(Math.sqrt(normalizedXp / 100)) + 1;
+          
+          // Helper to get XP for a specific level
+          const getXpForLevel = (lvl: number) => {
+             if (lvl <= 100) {
+                 return 100 * Math.pow(lvl - 1, 2);
+             }
+             const normXp = 100 * Math.pow(lvl - 1, 2);
+             // Reverse normalization: XP = LEVEL_100_XP + (normXp - LEVEL_100_XP) * 100
+             return LEVEL_100_XP + (normXp - LEVEL_100_XP) * 100;
+          };
+
+          currentLevelXp = getXpForLevel(currentLevel);
+          nextLevelXp = getXpForLevel(currentLevel + 1);
+      }
       
+      if (currentLevel >= 200) {
+          currentLevel = 200;
+          return { percent: 100, current: xp, next: xp, level: 200 };
+      }
+
       const levelProgress = xp - currentLevelXp;
       const levelTotal = nextLevelXp - currentLevelXp;
       
-      // Avoid division by zero if level 1 (0 to 100)
-      if (levelTotal === 0) return { percent: 0, current: xp, next: nextLevelXp, level: currentLevel };
+      // Avoid division by zero
+      if (levelTotal <= 0) return { percent: 0, current: xp, next: nextLevelXp, level: currentLevel };
       
       return { percent: Math.min(100, Math.max(0, (levelProgress / levelTotal) * 100)), current: xp, next: nextLevelXp, level: currentLevel };
   }
@@ -382,27 +411,30 @@
                     functionName: 'getStats',
                     args: [tokenId]
                 });
-                // stats is [miningXp, miningLevel, woodcuttingXp, woodcuttingLevel]
+                    // stats is [miningXp, miningLevel, woodcuttingXp, woodcuttingLevel]
                 if (stats && stats.length >= 4) {
                     miningXp = stats[0];
-                    // stats[1] is miningLevel
                     woodcuttingXp = stats[2];
-                    // stats[3] is woodcuttingLevel
+                    
+                    // Use contract levels directly if possible to avoid JS calc mismatches
+                    miningLevel = stats[1];
+                    woodcuttingLevel = stats[3];
 
-                    // Calculate levels locally to be safe, or use contract values
-                    // We use the same logic as contract: Level = 1 + sqrt(xp / 100)
-                    const mXp = Number(miningXp);
-                    const wXp = Number(woodcuttingXp);
-                    miningLevel = BigInt(Math.floor(Math.sqrt(mXp / 100)) + 1);
-                    woodcuttingLevel = BigInt(Math.floor(Math.sqrt(wXp / 100)) + 1);
+                    // Just in case contract returns 0 for level (shouldn't happen if XP > 0)
+                    if (miningLevel === 0n && miningXp > 0n) {
+                        miningLevel = BigInt(calculateProgress(miningXp).level);
+                    }
+                    if (woodcuttingLevel === 0n && woodcuttingXp > 0n) {
+                        woodcuttingLevel = BigInt(calculateProgress(woodcuttingXp).level);
+                    }
                 } else if (stats && stats.length === 2) {
                      // Fallback for older ABI if somehow cached?
                     miningXp = stats[0];
                     woodcuttingXp = stats[1];
                     const mXp = Number(miningXp);
                     const wXp = Number(woodcuttingXp);
-                    miningLevel = BigInt(Math.floor(Math.sqrt(mXp / 100)) + 1);
-                    woodcuttingLevel = BigInt(Math.floor(Math.sqrt(wXp / 100)) + 1);
+                    miningLevel = BigInt(calculateProgress(BigInt(mXp)).level);
+                    woodcuttingLevel = BigInt(calculateProgress(BigInt(wXp)).level);
                 }
 
                 // Fetch Void Level
@@ -464,10 +496,10 @@
           }) as { tokenId: bigint, level: bigint }[];
           
           // Filter out empty entries and sort descending (contract should keep sorted but safe to ensure)
-          // Also failsafe filter out ghost Skiller #32 and impossible levels
+          // Failsafe filter out ghost Skiller #32 ONLY (Level 100+ is valid for real players)
           leaderboardData = [...data]
               .filter(entry => entry.level > 0n)
-              .filter(entry => entry.tokenId !== 32n && entry.level < 100n)
+              .filter(entry => entry.tokenId !== 32n)
               .sort((a, b) => Number(b.level - a.level));
               
           // Fetch Cost for user
@@ -691,7 +723,7 @@
             // We can infer if we leveled up if the previous level (which we don't have stored unless passed)
             // Alternative: Calculate level for (newXp - xpAmount). If < newLevel, we leveled up.
             const oldXp = newXp - xpAmount;
-            const oldLevel = Math.floor(Math.sqrt(oldXp / 100)) + 1;
+            const oldLevel = calculateProgress(BigInt(oldXp)).level;
             
             if (newLevel > oldLevel) {
                 showToast(`Level Up! Woodcutting ${newLevel}`, 'level-up');
@@ -721,7 +753,7 @@
             const newLevel = calculateProgress(BigInt(newXp)).level;
             
             const oldXp = newXp - xpAmount;
-            const oldLevel = Math.floor(Math.sqrt(oldXp / 100)) + 1;
+            const oldLevel = calculateProgress(BigInt(oldXp)).level;
             
             if (newLevel > oldLevel) {
                 showToast(`Level Up! Mining ${newLevel}`, 'level-up');
@@ -937,8 +969,8 @@
       
       // Quest Config
       const questMap = {
-          1: { id: 201n, amount: 20n, name: 'Oak Logs' },
-          2: { id: 301n, amount: 20n, name: 'Iron Ore' },
+          1: { id: 201n, amount: 50n, name: 'Oak Logs' },
+          2: { id: 301n, amount: 50n, name: 'Iron Ore' },
           3: { id: 1n, amount: 1000n * 10n**18n, name: 'Gold Coins' }
       };
       const quest = questMap[questId as keyof typeof questMap];
@@ -1893,17 +1925,17 @@
                              </div>
                          </div>
                         <div class="quest-info">
-                            <h4>Tree Charm</h4>
-                            <div class="cost">
-                                <span style="color: #888;">Cost: 200 Gold Coins</span>
-                            </div>
-                        </div>
-                        
-                        <button 
-                            class="quest-btn" 
-                            on:click={() => handleBuy('woodcutting-charm')}
-                            disabled={!!actionLoading || (selectedProfile?.goldBalance || 0n) < 200n * 10n**18n}
-                        >
+                           <h4>Tree Charm</h4>
+                           <div class="cost">
+                               <span style="color: #888;">Cost: 500 Gold Coins</span>
+                           </div>
+                       </div>
+                       
+                       <button 
+                           class="quest-btn" 
+                           on:click={() => handleBuy('woodcutting-charm')}
+                           disabled={!!actionLoading || (selectedProfile?.goldBalance || 0n) < 500n * 10n**18n}
+                       >
                             {#if actionLoading === 'buy-wood'}
                                 <div class="spinner-small"></div>
                             {:else}
@@ -1920,17 +1952,17 @@
                              </div>
                          </div>
                         <div class="quest-info">
-                            <h4>Rock Charm</h4>
-                             <div class="cost">
-                                <span style="color: #888;">Cost: 200 Gold Coins</span>
-                            </div>
-                        </div>
-                        
-                        <button 
-                            class="quest-btn" 
-                            on:click={() => handleBuy('mining-charm')}
-                            disabled={!!actionLoading || (selectedProfile?.goldBalance || 0n) < 200n * 10n**18n}
-                        >
+                           <h4>Rock Charm</h4>
+                            <div class="cost">
+                               <span style="color: #888;">Cost: 500 Gold Coins</span>
+                           </div>
+                       </div>
+                       
+                       <button 
+                           class="quest-btn" 
+                           on:click={() => handleBuy('mining-charm')}
+                           disabled={!!actionLoading || (selectedProfile?.goldBalance || 0n) < 500n * 10n**18n}
+                       >
                             {#if actionLoading === 'buy-mine'}
                                 <div class="spinner-small"></div>
                             {:else}
@@ -1955,14 +1987,14 @@
                         <div class="quest-info">
                             <h4>Lumberjack's Aid</h4>
                             <div class="cost">
-                                <span>Contribute 20 Oak Logs</span>
+                                <span>Contribute 50 Oak Logs</span>
                                 <span style="color: #ffd700;">Reward: 100 Gold Coins</span>
                             </div>
                         </div>
                         <button 
                             class="quest-btn" 
                             on:click={() => handleQuest(1)}
-                            disabled={!!actionLoading || (selectedProfile?.woodBalance || 0n) < 20n}
+                            disabled={!!actionLoading || (selectedProfile?.woodBalance || 0n) < 50n}
                         >
                             {#if actionLoading === 'quest-1'}
                                 <div class="spinner-small"></div>
@@ -1978,14 +2010,14 @@
                         <div class="quest-info">
                             <h4>Miner's Request</h4>
                             <div class="cost">
-                                <span>Contribute 20 Iron Ore</span>
+                                <span>Contribute 50 Iron Ore</span>
                                 <span style="color: #ffd700;">Reward: 100 Gold Coins</span>
                             </div>
                         </div>
                         <button 
                             class="quest-btn" 
                             on:click={() => handleQuest(2)}
-                            disabled={!!actionLoading || (selectedProfile?.ironOreBalance || 0n) < 20n}
+                            disabled={!!actionLoading || (selectedProfile?.ironOreBalance || 0n) < 50n}
                         >
                             {#if actionLoading === 'quest-2'}
                                 <div class="spinner-small"></div>
@@ -2038,9 +2070,9 @@
                               </div>
                               <div class="xp-progress">
                                   <div class="xp-bar-mini">
-                                       <div class="xp-fill purple" style="width: {calculateProgress(selectedProfile?.woodcuttingXp || 0n).percent}%"></div>
+                                       <div class="xp-fill purple" style="width: {(calculateProgress(selectedProfile?.woodcuttingXp || 0n).percent || 0)}%"></div>
                                   </div>
-                                  <span class="xp-text-mini">{selectedProfile?.woodcuttingXp || 0} / {calculateProgress(selectedProfile?.woodcuttingXp || 0n).next} XP</span>
+                                  <span class="xp-text-mini">{Number(selectedProfile?.woodcuttingXp || 0n).toLocaleString()} / {Number(calculateProgress(selectedProfile?.woodcuttingXp || 0n).next).toLocaleString()} XP</span>
                               </div>
                           </div>
                       </div>
@@ -2055,9 +2087,9 @@
                               </div>
                               <div class="xp-progress">
                                   <div class="xp-bar-mini">
-                                       <div class="xp-fill purple" style="width: {calculateProgress(selectedProfile?.miningXp || 0n).percent}%"></div>
+                                       <div class="xp-fill purple" style="width: {(calculateProgress(selectedProfile?.miningXp || 0n).percent || 0)}%"></div>
                                   </div>
-                                  <span class="xp-text-mini">{selectedProfile?.miningXp || 0} / {calculateProgress(selectedProfile?.miningXp || 0n).next} XP</span>
+                                  <span class="xp-text-mini">{Number(selectedProfile?.miningXp || 0n).toLocaleString()} / {Number(calculateProgress(selectedProfile?.miningXp || 0n).next).toLocaleString()} XP</span>
                               </div>
                           </div>
                       </div>
@@ -2089,8 +2121,7 @@
                             </div>
                         </div>
                         <button 
-                            class="craft-btn" 
-                            style="background: #9c27b0;"
+                            class="sacrifice-btn" 
                             on:click={() => handleSacrifice()} 
                             disabled={!!actionLoading || (selectedProfile?.woodBalance || 0n) < voidCost || (selectedProfile?.ironOreBalance || 0n) < voidCost}
                         >
@@ -2104,7 +2135,6 @@
                 </div>
     
                 <div class="leaderboard-section">
-                    <h4>Leaderboard</h4>
                     <div class="leaderboard-list">
                         {#if leaderboardData.length === 0}
                             <div class="empty-state">No souls have entered the Void yet.</div>
@@ -2113,7 +2143,7 @@
                                 <div class="leaderboard-row {entry.tokenId === selectedProfile?.id ? 'highlight' : ''}">
                                     <span class="rank">#{i+1}</span>
                                     <span class="name">Skiller #{entry.tokenId}</span>
-                                    <span class="level">Level {entry.level}</span>
+                                    <span class="level">{entry.level}</span>
                                 </div>
                             {/each}
                         {/if}
@@ -2996,9 +3026,35 @@
     
     .void-actions { margin-bottom: 1.5rem; }
     
-    /* Force cache break v2 */
+    .sacrifice-buttons { display: flex; flex-direction: column; gap: 0.5rem; }
+    .sacrifice-btn { 
+        background: #333; 
+        color: #666; 
+        border: none; 
+        border-radius: 6px; 
+        padding: 0.5rem 1rem; 
+        font-weight: bold; 
+        font-size: 0.8rem; 
+        cursor: not-allowed; 
+        display: flex; 
+        justify-content: center; 
+        align-items: center; 
+        min-width: 70px; 
+        width: auto; 
+    }
+    .sacrifice-btn:enabled { background: #9c27b0; color: white; cursor: pointer; }
+    .sacrifice-btn:disabled { background: #333 !important; color: #666 !important; cursor: not-allowed; }
+    
+    .cost-box-grey {
+        background: #2a2a2a;
+        padding: 8px 12px;
+        border-radius: 8px;
+        display: flex;
+        flex-direction: column;
+        min-width: 80px;
+    }
+
     .leaderboard-section { flex: 1; overflow: hidden; display: flex; flex-direction: column; }
-    .leaderboard-section h4 { color: #e1bee7; margin: 0 0 0.5rem 0; text-align: center; font-size: 0.9rem; text-transform: uppercase; letter-spacing: 1px; }
     .leaderboard-list { overflow-y: auto; flex: 1; display: flex; flex-direction: column; gap: 4px; max-height: 200px; }
     .leaderboard-row { display: flex; align-items: center; padding: 0.5rem; background: #252525; border-radius: 6px; border: 1px solid #333; }
     .leaderboard-row.highlight { border-color: #9c27b0; background: rgba(156, 39, 176, 0.1); }
