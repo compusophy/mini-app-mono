@@ -31,7 +31,11 @@ contract MiningFacet {
     }
 
     function getLevel(uint256 xp) internal pure returns (uint256) {
-        return sqrt(xp / 100) + 1;
+        uint256 level = sqrt(xp / 100) + 1;
+        if (level > 100) {
+            return 100;
+        }
+        return level;
     }
 
     function mineIron(uint256 tokenId) external {
@@ -83,6 +87,11 @@ contract MiningFacet {
         // APPLY MULTIPLIER
         amount = amount * level;
         xp = xp * level;
+
+        // Cap XP gain at Level 100
+        if (level >= 100) {
+            xp = 0;
+        }
 
         // Update XP
         gs.xp[tokenId][1] += xp; // Skill 1 = Mining

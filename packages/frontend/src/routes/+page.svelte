@@ -376,15 +376,23 @@
                     functionName: 'getStats',
                     args: [tokenId]
                 });
-                // stats is [miningXp, woodcuttingXp]
-                if (stats) {
+                // stats is [miningXp, miningLevel, woodcuttingXp, woodcuttingLevel]
+                if (stats && stats.length >= 4) {
+                    miningXp = stats[0];
+                    // stats[1] is miningLevel
+                    woodcuttingXp = stats[2];
+                    // stats[3] is woodcuttingLevel
+
+                    // Calculate levels locally to be safe, or use contract values
+                    // We use the same logic as contract: Level = 1 + sqrt(xp / 100)
+                    const mXp = Number(miningXp);
+                    const wXp = Number(woodcuttingXp);
+                    miningLevel = BigInt(Math.floor(Math.sqrt(mXp / 100)) + 1);
+                    woodcuttingLevel = BigInt(Math.floor(Math.sqrt(wXp / 100)) + 1);
+                } else if (stats && stats.length === 2) {
+                     // Fallback for older ABI if somehow cached?
                     miningXp = stats[0];
                     woodcuttingXp = stats[1];
-                    // Calculate levels
-                    // Level = 1 + sqrt(xp / 100)
-                    // We need BigInt math or just cast to number for display if safely within range
-                    // 100n * (level * level) = xp -> level = sqrt(xp/100)
-                    // Simple approx for UI
                     const mXp = Number(miningXp);
                     const wXp = Number(woodcuttingXp);
                     miningLevel = BigInt(Math.floor(Math.sqrt(mXp / 100)) + 1);
@@ -990,7 +998,7 @@
         
         await loadProfiles(true);
         showToast('Purchase Complete!', 'inventory');
-        showToast(item === 'mining-charm' ? '+1 Mining Charm' : '+1 Woodcutting Charm', 'item-received');
+        showToast(item === 'mining-charm' ? '+1 Rock Charm' : '+1 Tree Charm', 'item-received');
         
         showShop = false;
       } catch (e: any) {
@@ -1203,12 +1211,35 @@
         sendRecipientId = '';
         sendAmount = '1';
         
+        // Capture item name before potentially nulling selectedItem
+        const sentItemName = selectedItem ? selectedItem.name : '';
+
         // If all items sent, close the detail view
         if (amount === currentBalance) {
+             // Also remove from selectedProfile so it disappears from inventory immediately
+             if (selectedProfile && sentItemName) {
+                 if (sentItemName.includes('Gold')) selectedProfile.goldBalance = 0n;
+                 else if (sentItemName.includes('Oak Logs')) selectedProfile.woodBalance = 0n;
+                 else if (sentItemName.includes('Copper Ore')) selectedProfile.oreBalance = 0n;
+                 else if (sentItemName.includes('Iron Ore')) selectedProfile.ironOreBalance = 0n;
+                 else if (sentItemName.includes('Bronze Axe')) selectedProfile.axeBalance = 0n;
+                 else if (sentItemName.includes('Iron Axe')) selectedProfile.ironAxeBalance = 0n;
+                 else if (sentItemName.includes('Bronze Pickaxe')) selectedProfile.pickaxeBalance = 0n;
+                 else if (sentItemName.includes('Iron Pickaxe')) selectedProfile.ironPickaxeBalance = 0n;
+                 else if (sentItemName.includes('Tree Charm')) selectedProfile.woodcuttingCharm = false;
+                 else if (sentItemName.includes('Rock Charm')) selectedProfile.miningCharm = false;
+             }
              selectedItem = null;
         } else {
             // Update local balance display before reload finishes
-            selectedItem.balance = currentBalance - amount;
+            if (selectedItem) {
+                selectedItem.balance = currentBalance - amount;
+            }
+            if (selectedProfile) {
+                 // We can't easily update the profile balances for partial sends without mapping IDs perfectly
+                 // But for full sends (most common for charms/tools), the above block handles it.
+                 // For stackable items, we'll rely on loadProfiles(true) which is called below.
+            }
         }
 
         await loadProfiles(true);
@@ -1531,6 +1562,20 @@
                                 {:else if selectedItem.name.includes('Axe')} <Axe size={48} color="#cd7f32"/>
                                 {:else if selectedItem.name.includes('Iron Pickaxe')} <Pickaxe size={48} color="#b0bec5"/>
                                 {:else if selectedItem.name.includes('Pickaxe')} <Pickaxe size={48} color="#cd7f32"/>
+                                {:else if selectedItem.name.includes('Tree Charm')} 
+                                    <div style="position: relative; width: 48px; height: 48px; display: flex; align-items: center; justify-content: center; margin: 0 auto;">
+                                        <Gem size={48} color="#4ade80"/>
+                                        <div style="position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); display: flex; align-items: center; justify-content: center;">
+                                            <TreeDeciduous size={24} color="#4ade80"/>
+                                        </div>
+                                    </div>
+                                {:else if selectedItem.name.includes('Rock Charm')} 
+                                    <div style="position: relative; width: 48px; height: 48px; display: flex; align-items: center; justify-content: center; margin: 0 auto;">
+                                        <Gem size={48} color="#b0bec5"/>
+                                        <div style="position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); display: flex; align-items: center; justify-content: center;">
+                                            <Mountain size={24} color="#b0bec5"/>
+                                        </div>
+                                    </div>
                                 {/if}
                             </div>
                             <p>Balance: {selectedItem.name.includes('Gold') && selectedProfile?.version === 'v2' 
@@ -1597,6 +1642,30 @@
                              <div class="inventory-item" title="Iron Pickaxe" on:click={() => selectedItem = { id: 152n, name: 'Iron Pickaxe', balance: selectedProfile?.ironPickaxeBalance || 0n }}>
                                 <div class="item-icon"><Pickaxe size={24} color="#b0bec5"/></div>
                                 <div class="item-count">{selectedProfile.ironPickaxeBalance}</div>
+                            </div>
+                        {/if}
+
+                        <!-- Charms -->
+                        {#if selectedProfile.miningCharm}
+                             <div class="inventory-item" title="Rock Charm" on:click={() => selectedItem = { id: 401n, name: 'Rock Charm', balance: 1n }}>
+                                <div class="charm-icon-wrapper rock" style="width: 32px; height: 32px; border-width: 1.5px; box-shadow: none; margin: 0;">
+                                     <Gem size={16} color="#b0bec5"/>
+                                     <div class="charm-icon-overlay" style="padding: 1px; border-width: 0.5px;">
+                                         <Mountain size={8} color="#b0bec5"/>
+                                     </div>
+                                </div>
+                                <div class="item-count">1</div>
+                            </div>
+                        {/if}
+                        {#if selectedProfile.woodcuttingCharm}
+                             <div class="inventory-item" title="Tree Charm" on:click={() => selectedItem = { id: 402n, name: 'Tree Charm', balance: 1n }}>
+                                <div class="charm-icon-wrapper tree" style="width: 32px; height: 32px; border-width: 1.5px; box-shadow: none; margin: 0;">
+                                     <Gem size={16} color="#4ade80"/>
+                                     <div class="charm-icon-overlay" style="padding: 1px; border-width: 0.5px;">
+                                         <TreeDeciduous size={8} color="#4ade80"/>
+                                     </div>
+                                </div>
+                                <div class="item-count">1</div>
                             </div>
                         {/if}
                     </div>
@@ -1696,68 +1765,70 @@
         </div>
     {/if}
     
-    <!-- Shop Modal -->
+    <!-- Shop Modal (Cloned from Quest Modal) -->
     {#if showShop}
         <div class="modal-backdrop" on:click={() => showShop = false}>
-            <div class="modal-content shop-modal" on:click|stopPropagation>
+            <div class="modal-content quests-modal" on:click|stopPropagation>
                 
-                <div class="items-grid">
-                    <!-- Mining Charm -->
-                    <div class="item-card" class:owned={selectedProfile?.miningCharm}>
-                        <div class="charm-icon-wrapper rock">
-                             <Gem size={28} color="#b0bec5"/>
-                             <div class="charm-icon-overlay">
-                                 <Mountain size={14} color="#b0bec5"/>
+                <div class="quests-list">
+                    <!-- Woodcutting Charm (Tree) -->
+                    <div class="quest-card">
+                         <div class="quest-icon">
+                             <div class="charm-icon-wrapper tree" style="display:flex; align-items:center; justify-content:center; position:relative; height: 32px; width: 32px; margin: 0 auto;">
+                                 <Gem size={28} color="#4ade80"/>
+                                 <div class="charm-icon-overlay" style="position:absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); display: flex; align-items: center; justify-content: center;">
+                                     <TreeDeciduous size={14} color="#4ade80"/>
+                                 </div>
                              </div>
+                         </div>
+                        <div class="quest-info">
+                            <h4>Tree Charm</h4>
+                            <div class="cost">
+                                <span style="color: #888;">Cost: 200 Gold Coins</span>
+                            </div>
                         </div>
-                        <h4>Rock Charm</h4>
-                        <!-- Removed description -->
                         
-                        {#if selectedProfile?.miningCharm}
-                            <div class="owned-badge">Owned</div>
-                        {:else}
-                             <div class="cost-text">Cost: 200 Gold Coins</div>
-                            <button 
-                                class="action-btn" 
-                                on:click={() => handleBuy('mining-charm')}
-                                disabled={!!actionLoading || (selectedProfile?.goldBalance || 0n) < 200n * 10n**18n}
-                            >
-                                {#if actionLoading === 'buy'}
-                                    <div class="spinner-small"></div>
-                                {:else}
-                                    Buy
-                                {/if}
-                            </button>
-                        {/if}
+                        <button 
+                            class="quest-btn" 
+                            on:click={() => handleBuy('woodcutting-charm')}
+                            disabled={!!actionLoading || (selectedProfile?.goldBalance || 0n) < 200n * 10n**18n}
+                        >
+                            {#if actionLoading === 'buy-wood'}
+                                <div class="spinner-small"></div>
+                            {:else}
+                                Buy
+                            {/if}
+                        </button>
                     </div>
 
-                    <!-- Woodcutting Charm -->
-                    <div class="item-card" class:owned={selectedProfile?.woodcuttingCharm}>
-                        <div class="charm-icon-wrapper tree">
-                             <Gem size={28} color="#4ade80"/>
-                             <div class="charm-icon-overlay">
-                                 <TreeDeciduous size={14} color="#4ade80"/>
+                    <!-- Mining Charm (Rock) -->
+                    <div class="quest-card">
+                        <div class="quest-icon">
+                             <div class="charm-icon-wrapper rock" style="display:flex; align-items:center; justify-content:center; position:relative; height: 32px; width: 32px; margin: 0 auto;">
+                                 <Gem size={28} color="#b0bec5"/>
+                                 <div class="charm-icon-overlay" style="position:absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); display: flex; align-items: center; justify-content: center;">
+                                     <Mountain size={14} color="#b0bec5"/>
+                                 </div>
                              </div>
                         </div>
-                        <h4>Tree Charm</h4>
-                        <!-- Removed description -->
+                        <div class="quest-info">
+                            <h4>Rock Charm</h4>
+                             <div class="cost">
+                                <span style="color: #888;">Cost: 200 Gold Coins</span>
+                            </div>
+                        </div>
                         
-                        {#if selectedProfile?.woodcuttingCharm}
-                             <div class="owned-badge">Owned</div>
-                        {:else}
-                            <div class="cost-text">Cost: 200 Gold Coins</div>
-                            <button 
-                                class="action-btn" 
-                                on:click={() => handleBuy('woodcutting-charm')}
-                                disabled={!!actionLoading || (selectedProfile?.goldBalance || 0n) < 200n * 10n**18n}
-                            >
-                                {#if actionLoading === 'buy'}
-                                    <div class="spinner-small"></div>
-                                {:else}
-                                    Buy
-                                {/if}
-                            </button>
-                        {/if}
+                        <button 
+                            class="quest-btn" 
+                            on:click={() => handleBuy('mining-charm')}
+                            disabled={!!actionLoading || (selectedProfile?.goldBalance || 0n) < 200n * 10n**18n}
+                        >
+                            {#if actionLoading === 'buy-mine'}
+                                <div class="spinner-small"></div>
+                            {:else}
+                                Buy
+                            {/if}
+                        </button>
                     </div>
                 </div>
             </div>
@@ -2015,9 +2086,9 @@
                 <!-- Center Group: Shop, Skills, Crafting -->
                 {#if selectedProfile}
                      <div style="display: flex; gap: 8px;">
-                        <button class="square-btn" on:click={() => showShop = !showShop}>
-                            <Store size={24} />
-                        </button>
+                    <button class="square-btn" on:click={() => showShop = !showShop}>
+                        <Gem size={24} />
+                    </button>
                         <button class="square-btn" on:click={() => showSkills = !showSkills}>
                             <BarChart3 size={24} />
                         </button>
@@ -2318,8 +2389,8 @@
     }
 
     .items-grid {
-        display: grid;
-        grid-template-columns: 1fr 1fr;
+        display: flex;
+        flex-direction: column;
         gap: 1rem;
     }
 
@@ -2627,7 +2698,7 @@
         height: 100%;
     }
     
-    .crafting-modal {
+    .crafting-modal, .quests-modal, .shop-modal {
         top: 50%;
         left: 50%;
         transform: translate(-50%, -50%);
@@ -2635,14 +2706,14 @@
         max-height: 80vh;
         overflow-y: auto;
     }
-    
-    .recipes-list, .quests-list {
+
+    .recipes-list, .quests-list, .items-grid {
         display: flex;
         flex-direction: column;
         gap: 1rem;
     }
     
-    .recipe-card, .quest-card {
+    .recipe-card, .quest-card, .item-card {
         background: #252525;
         border: 1px solid #333;
         border-radius: 8px;
@@ -2652,20 +2723,36 @@
         gap: 0.75rem;
     }
     
-    .recipe-info, .quest-info { flex: 1; }
-    .recipe-info h4, .quest-info h4 { margin: 0 0 0.25rem 0; color: white; font-size: 0.9rem; }
-    .cost { display: flex; flex-direction: column; font-size: 0.7rem; color: #aaa; }
-    .craft-btn, .quest-btn { background: #2e7d32; color: white; border: none; padding: 0.5rem 1rem; border-radius: 6px; cursor: pointer; font-size: 0.8rem; font-weight: bold; }
-    .craft-btn:disabled, .quest-btn:disabled { background: #333; color: #666; cursor: not-allowed; }
-
-    .quests-modal {
-        top: 50%;
-        left: 50%;
-        transform: translate(-50%, -50%);
-        width: 300px;
-        max-height: 80vh;
-        overflow-y: auto;
+    .recipe-info, .quest-info, .item-info-col { flex: 1; display: flex; flex-direction: column; }
+    .recipe-info h4, .quest-info h4, .item-card h4 { margin: 0 0 0.25rem 0; color: white; font-size: 0.9rem; font-weight: 600; }
+    .cost, .cost-text { display: flex; flex-direction: column; font-size: 0.7rem; color: #aaa; margin: 0; }
+    .cost-text { color: #aaa; font-weight: normal; }
+    
+    .craft-btn, .quest-btn, .action-btn { 
+        background: #2563eb; 
+        color: white; 
+        border: none; 
+        padding: 0.5rem 1rem; 
+        border-radius: 6px; 
+        cursor: pointer; 
+        font-size: 0.8rem; 
+        font-weight: bold;
+        width: auto;
+        margin: 0;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        min-width: 70px;
     }
+    
+    .craft-btn:disabled, .quest-btn:disabled, .action-btn:disabled { 
+        background: #333; 
+        color: #666; 
+        cursor: not-allowed; 
+    }
+
+    /* Remove duplicate quest-modal style if present, using shared one above */
+    /* Clean up profile-btn and other styles if needed */
     
     .version-tag { font-size: 0.7rem; background: #333; padding: 2px 6px; border-radius: 4px; margin-left: 8px; vertical-align: middle; }
     .profile-btn-content { display: flex; align-items: center; justify-content: center; gap: 10px; }
@@ -2714,3 +2801,4 @@
         animation: spin 1s linear infinite;
     }
 </style>
+

@@ -32,7 +32,11 @@ contract WoodcuttingFacet {
 
     // Level Calculator
     function getLevel(uint256 xp) internal pure returns (uint256) {
-        return sqrt(xp / 100) + 1;
+        uint256 level = sqrt(xp / 100) + 1;
+        if (level > 100) {
+            return 100;
+        }
+        return level;
     }
 
     function chopOak(uint256 tokenId) external {
@@ -86,6 +90,11 @@ contract WoodcuttingFacet {
         // APPLY LEVEL MULTIPLIER
         amount = amount * level;
         xp = xp * level;
+
+        // Cap XP gain at Level 100
+        if (level >= 100) {
+            xp = 0;
+        }
 
         // Update XP
         gs.xp[tokenId][2] += xp; // Skill 2 = Woodcutting

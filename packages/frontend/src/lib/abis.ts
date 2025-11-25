@@ -2774,7 +2774,17 @@ export const ABIS = {
         },
         {
           "internalType": "uint256",
+          "name": "miningLevel",
+          "type": "uint256"
+        },
+        {
+          "internalType": "uint256",
           "name": "woodcuttingXp",
+          "type": "uint256"
+        },
+        {
+          "internalType": "uint256",
+          "name": "woodcuttingLevel",
           "type": "uint256"
         }
       ],
