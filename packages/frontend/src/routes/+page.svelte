@@ -88,7 +88,36 @@
   // Derived
   $: selectedProfile = selectedProfileId !== null ? profiles.find(p => p.id === selectedProfileId) : null;
 
-    function calculateProgress(currentXp: bigint): { percent: number, current: number, next: number, level: number } {
+  function toggleModal(modal: 'inventory' | 'profile' | 'skills' | 'quests' | 'leaderboard' | 'shop' | 'crafting') {
+      // If the target is already open, close it
+      if (modal === 'inventory' && showInventory) { showInventory = false; return; }
+      if (modal === 'profile' && showProfile) { showProfile = false; return; }
+      if (modal === 'skills' && showSkills) { showSkills = false; return; }
+      if (modal === 'quests' && showQuests) { showQuests = false; return; }
+      if (modal === 'leaderboard' && showLeaderboard) { showLeaderboard = false; return; }
+      if (modal === 'shop' && showShop) { showShop = false; return; }
+      if (modal === 'crafting' && showCrafting) { showCrafting = false; return; }
+
+      // Close all others
+      showInventory = false;
+      showProfile = false;
+      showSkills = false;
+      showQuests = false;
+      showLeaderboard = false;
+      showShop = false;
+      showCrafting = false;
+
+      // Open target
+      if (modal === 'inventory') showInventory = true;
+      if (modal === 'profile') showProfile = true;
+      if (modal === 'skills') showSkills = true;
+      if (modal === 'quests') showQuests = true;
+      if (modal === 'leaderboard') showLeaderboard = true;
+      if (modal === 'shop') showShop = true;
+      if (modal === 'crafting') showCrafting = true;
+  }
+
+  function calculateProgress(currentXp: bigint): { percent: number, current: number, next: number, level: number } {
       const xp = Number(currentXp);
       
       const LEVEL_100_XP = 980100;
@@ -135,6 +164,17 @@
       if (levelTotal <= 0) return { percent: 0, current: xp, next: nextLevelXp, level: currentLevel };
       
       return { percent: Math.min(100, Math.max(0, (levelProgress / levelTotal) * 100)), current: xp, next: nextLevelXp, level: currentLevel };
+  }
+
+  function formatRsNumber(value: number | bigint): string {
+      const num = Number(value);
+      if (num >= 10000000) { // 10M+
+          return Math.floor(num / 1000000) + 'M';
+      }
+      if (num >= 100000) { // 100K+
+          return Math.floor(num / 1000) + 'K';
+      }
+      return num.toLocaleString();
   }
 
   function truncateAddress(addr: string) {
@@ -547,22 +587,26 @@
         
         // Optimistic Update: Manually reduce balance for immediate feedback
         if (selectedProfile) {
-            selectedProfile.woodBalance = (selectedProfile.woodBalance || 0n) - voidCost;
-            selectedProfile.ironOreBalance = (selectedProfile.ironOreBalance || 0n) - voidCost;
+            // Create a NEW object to ensure reactivity triggers
+            const updatedProfile = { ...selectedProfile };
+            
+            updatedProfile.woodBalance = (updatedProfile.woodBalance || 0n) - voidCost;
+            updatedProfile.ironOreBalance = (updatedProfile.ironOreBalance || 0n) - voidCost;
             
             // Optimistically update Void Level
-            const currentLevel = selectedProfile.voidLevel || 0n;
+            const currentLevel = updatedProfile.voidLevel || 0n;
             const nextLevel = currentLevel + 1n;
-            selectedProfile.voidLevel = nextLevel;
+            updatedProfile.voidLevel = nextLevel;
             
-            // Optimistically update Cost for next level: 100 * (nextLevel + 1)^2
-            // The contract calculates cost for targeting (current + 1).
-            // So if we are now at `nextLevel`, the cost for `nextLevel + 1` is:
+            // Update Cost for next level
             const targetLevel = nextLevel + 1n;
             voidCost = 100n * (targetLevel * targetLevel);
 
-            // Force reactivity
-            profiles = profiles.map(p => p.id === selectedProfile!.id ? selectedProfile! : p);
+            // Update the profiles array with the new object
+            profiles = profiles.map(p => p.id === updatedProfile.id ? updatedProfile : p);
+            
+            // IMPORTANT: Also update selectedProfile manually if the reactive binding is slow or disconnected
+            selectedProfile = updatedProfile;
         }
 
         await publicClient.waitForTransactionReceipt({ hash });
@@ -1538,11 +1582,11 @@
         </div>
         <div class="header-right">
             {#if selectedProfile}
-                <button class="square-btn" on:click={() => showProfile = !showProfile}>
+                <button class="square-btn" on:click={() => toggleModal('profile')}>
                     <User size={24} />
                 </button>
             {:else if account}
-                 <button class="square-btn" on:click={() => showProfile = !showProfile}>
+                 <button class="square-btn" on:click={() => toggleModal('profile')}>
                     <User size={24} />
                 </button>
             {/if}
@@ -2072,7 +2116,7 @@
                                   <div class="xp-bar-mini">
                                        <div class="xp-fill purple" style="width: {(calculateProgress(selectedProfile?.woodcuttingXp || 0n).percent || 0)}%"></div>
                                   </div>
-                                  <span class="xp-text-mini">{Number(selectedProfile?.woodcuttingXp || 0n).toLocaleString()} / {Number(calculateProgress(selectedProfile?.woodcuttingXp || 0n).next).toLocaleString()} XP</span>
+                                  <span class="xp-text-mini">{formatRsNumber(selectedProfile?.woodcuttingXp || 0n)} / {formatRsNumber(calculateProgress(selectedProfile?.woodcuttingXp || 0n).next)} XP</span>
                               </div>
                           </div>
                       </div>
@@ -2089,7 +2133,7 @@
                                   <div class="xp-bar-mini">
                                        <div class="xp-fill purple" style="width: {(calculateProgress(selectedProfile?.miningXp || 0n).percent || 0)}%"></div>
                                   </div>
-                                  <span class="xp-text-mini">{Number(selectedProfile?.miningXp || 0n).toLocaleString()} / {Number(calculateProgress(selectedProfile?.miningXp || 0n).next).toLocaleString()} XP</span>
+                                  <span class="xp-text-mini">{formatRsNumber(selectedProfile?.miningXp || 0n)} / {formatRsNumber(calculateProgress(selectedProfile?.miningXp || 0n).next)} XP</span>
                               </div>
                           </div>
                       </div>
@@ -2116,8 +2160,8 @@
                         <div class="recipe-icon"><Trophy size={24} color="#9c27b0"/></div>
                         <div class="recipe-info">
                             <div class="cost">
-                                <span>{Number(voidCost).toLocaleString()} Oak Logs</span>
-                                <span>{Number(voidCost).toLocaleString()} Iron Ore</span>
+                                <span>{formatRsNumber(voidCost)} Oak Logs</span>
+                                <span>{formatRsNumber(voidCost)} Iron Ore</span>
                             </div>
                         </div>
                         <button 
@@ -2273,35 +2317,35 @@
         {:else}
             <!-- Leaderboard (Leftmost) -->
             {#if selectedProfile.version === 'v2'}
-                <button class="square-btn" on:click={() => showLeaderboard = !showLeaderboard}>
+                <button class="square-btn" on:click={() => toggleModal('leaderboard')}>
                     <Trophy size={24} />
                 </button>
             {/if}
 
             <!-- Quests -->
-            <button class="square-btn" on:click={() => showQuests = !showQuests}>
+            <button class="square-btn" on:click={() => toggleModal('quests')}>
                 <HelpCircle size={24} />
             </button>
 
             <!-- Shop -->
-            <button class="square-btn" on:click={() => showShop = !showShop}>
+            <button class="square-btn" on:click={() => toggleModal('shop')}>
                 <Gem size={24} />
             </button>
 
             <!-- Skills -->
-            <button class="square-btn" on:click={() => showSkills = !showSkills}>
+            <button class="square-btn" on:click={() => toggleModal('skills')}>
                 <BarChart3 size={24} />
             </button>
 
             <!-- Crafting -->
             {#if selectedProfile.version === 'v2'}
-                <button class="square-btn" on:click={() => showCrafting = !showCrafting}>
+                <button class="square-btn" on:click={() => toggleModal('crafting')}>
                     <Hammer size={24} />
                 </button>
             {/if}
 
             <!-- Inventory (Rightmost) -->
-            <button class="square-btn" on:click={() => showInventory = !showInventory}>
+            <button class="square-btn" on:click={() => toggleModal('inventory')}>
                 <Backpack size={24} />
             </button>
         {/if}
@@ -2729,7 +2773,7 @@
     }
     
     .app-container { max-width: 600px; margin: 0 auto; height: 100vh; display: flex; flex-direction: column; overflow: hidden; }
-    header, footer { min-height: 80px; height: 80px; padding: 0 12px; display: flex; align-items: center; justify-content: space-between; flex-shrink: 0; background: #121212; border-bottom: 1px solid #222; z-index: 10; }
+    header, footer { min-height: 80px; height: 80px; padding: 0 12px; display: flex; align-items: center; justify-content: space-between; flex-shrink: 0; background: #121212; border-bottom: 1px solid #222; z-index: 100; }
     footer { border-bottom: none; border-top: 1px solid #222; }
     .app-icon { width: 56px; height: 56px; border-radius: 16px; overflow: hidden; border: 1px solid #333; }
     .app-icon img { width: 100%; height: 100%; object-fit: cover; }
@@ -3016,15 +3060,16 @@
         right: auto;
         max-width: 320px;
         width: 90%;
+        padding-bottom: 1rem;
     }
-    .void-header { text-align: center; margin-bottom: 1rem; }
+    .void-header { text-align: center; margin-bottom: 0.5rem; padding-top: 0; }
     .void-header h3 { color: #e1bee7; margin: 0 0 0.5rem 0; }
-    .void-stats { display: flex; justify-content: center; gap: 1rem; margin-bottom: 1rem; }
+    .void-stats { display: flex; justify-content: center; gap: 1rem; margin-bottom: 0.5rem; }
     .stat-box { display: flex; flex-direction: column; align-items: center; background: rgba(156, 39, 176, 0.1); padding: 0.5rem 1rem; border-radius: 8px; border: 1px solid #9c27b0; }
     .stat-box .label { font-size: 0.7rem; color: #e1bee7; text-transform: uppercase; }
     .stat-box .value { font-size: 1.5rem; font-weight: bold; color: white; }
     
-    .void-actions { margin-bottom: 1.5rem; }
+    .void-actions { margin-bottom: 0.5rem; }
     
     .sacrifice-buttons { display: flex; flex-direction: column; gap: 0.5rem; }
     .sacrifice-btn { 
@@ -3041,6 +3086,7 @@
         align-items: center; 
         min-width: 70px; 
         width: auto; 
+        margin: 0; /* Remove explicit margin-top to let flex gap handle it */
     }
     .sacrifice-btn:enabled { background: #9c27b0; color: white; cursor: pointer; }
     .sacrifice-btn:disabled { background: #333 !important; color: #666 !important; cursor: not-allowed; }
@@ -3054,7 +3100,7 @@
         min-width: 80px;
     }
 
-    .leaderboard-section { flex: 1; overflow: hidden; display: flex; flex-direction: column; }
+    .leaderboard-section { flex: 1; overflow: hidden; display: flex; flex-direction: column; border-top: 1px solid #333; padding-top: 0.5rem; }
     .leaderboard-list { overflow-y: auto; flex: 1; display: flex; flex-direction: column; gap: 4px; max-height: 200px; }
     .leaderboard-row { display: flex; align-items: center; padding: 0.5rem; background: #252525; border-radius: 6px; border: 1px solid #333; }
     .leaderboard-row.highlight { border-color: #9c27b0; background: rgba(156, 39, 176, 0.1); }

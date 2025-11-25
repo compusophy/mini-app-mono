@@ -16,6 +16,7 @@ const ARTIFACTS = {
     'ShopFacet': 'facets/ShopFacet.sol/ShopFacet.json',
     'QuestFacet': 'facets/QuestFacet.sol/QuestFacet.json',
     'VoidFacet': 'facets/VoidFacet.sol/VoidFacet.json',
+    'GameFacet': 'facets/GameFacet.sol/GameFacet.json',
     'Diamond': 'diamond/Diamond.sol/Diamond.json',
     
     // V1 Contracts that exist in artifacts
@@ -51,16 +52,18 @@ const statsAbi = readAbi(ARTIFACTS['StatsFacet']);
 const shopAbi = readAbi(ARTIFACTS['ShopFacet']);
 const questAbi = readAbi(ARTIFACTS['QuestFacet']);
 const voidAbi = readAbi(ARTIFACTS['VoidFacet']);
+const gameAbi = readAbi(ARTIFACTS['GameFacet']);
 
 // Merge arrays, filtering duplicates? Or just concat. Ethers handles overload.
 const gameDiamondAbi = [
+    ...gameAbi, // Base Facet first
     ...woodcuttingAbi, 
     ...miningAbi, 
     ...craftingAbi,
-    ...statsAbi,
     ...shopAbi,
     ...questAbi,
-    ...voidAbi
+    ...voidAbi,
+    ...statsAbi // StatsFacet LAST to override getStats/getXP with new signatures
 ];
 
 // Load V1 fallback
