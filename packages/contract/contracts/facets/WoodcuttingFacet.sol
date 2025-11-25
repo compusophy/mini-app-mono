@@ -82,9 +82,10 @@ contract WoodcuttingFacet {
         }
 
         // APPLY CHARM MULTIPLIER
+        // Stacking Multiplier: Base * (1 + charmCount)
         if (hasCharm > 0) {
-            amount = amount * 2;
-            xp = xp * 2;
+            amount = amount * (1 + hasCharm);
+            xp = xp * (1 + hasCharm);
         }
 
         // APPLY LEVEL MULTIPLIER

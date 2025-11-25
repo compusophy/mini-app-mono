@@ -30,9 +30,10 @@
     ironPickaxeBalance?: bigint;
     ironOreBalance?: bigint;
     coalOreBalance?: bigint;
-    miningCharm?: boolean;
-    woodcuttingCharm?: boolean;
+    miningCharm?: bigint;
+    woodcuttingCharm?: bigint;
     tbaBalance?: bigint; // Native ETH balance of TBA
+    voidLevel?: bigint;
   };
 
   // State
@@ -53,6 +54,10 @@
   let showQuests = false;
   let showShop = false;
   let showSendModal = false;
+  let showLeaderboard = false;
+
+  let leaderboardData: { tokenId: bigint, level: bigint }[] = [];
+  let voidCost = 0n;
 
   let errorMsg: string | null = null;
   
@@ -63,7 +68,7 @@
     type Toast = {
     id: number;
     msg: string;
-    type: 'default' | 'woodcutting-xp' | 'mining-xp' | 'inventory' | 'error' | 'item-received' | 'level-up' | 'item-log' | 'item-ore' | 'item-gold';
+    type: 'default' | 'woodcutting-xp' | 'mining-xp' | 'inventory' | 'error' | 'item-received' | 'level-up' | 'item-log' | 'item-ore' | 'item-gold' | 'item-wood-charm' | 'item-mine-charm';
   };
   let toasts: Toast[] = [];
   let toastIdCounter = 0;
@@ -283,13 +288,14 @@
     let ironOreBalance = 0n;
     let coalOreBalance = 0n;
     
-    let miningCharm = false;
-    let woodcuttingCharm = false;
+    let miningCharm = 0n;
+    let woodcuttingCharm = 0n;
 
     let miningLevel = 1n;
     let miningXp = 0n;
     let woodcuttingLevel = 1n;
     let woodcuttingXp = 0n;
+    let voidLevel = 0n;
     let tbaBalance = 0n;
 
     try {
@@ -333,8 +339,8 @@
                 ironOreBalance = results[6] as bigint;
                 coalOreBalance = results[7] as bigint;
                 goldBalance = results[8] as bigint;
-                miningCharm = (results[9] as bigint) > 0n;
-                woodcuttingCharm = (results[10] as bigint) > 0n;
+                miningCharm = results[9] as bigint;
+                woodcuttingCharm = results[10] as bigint;
             }
         }
 
@@ -398,6 +404,19 @@
                     miningLevel = BigInt(Math.floor(Math.sqrt(mXp / 100)) + 1);
                     woodcuttingLevel = BigInt(Math.floor(Math.sqrt(wXp / 100)) + 1);
                 }
+
+                // Fetch Void Level
+                try {
+                    voidLevel = await publicClient.readContract({
+                        address: CONTRACT_ADDRESSES.Diamond as Address,
+                        abi: ABIS.GameDiamond,
+                        functionName: 'getVoidLevel',
+                        args: [tokenId]
+                    }) as bigint;
+                } catch (e) {
+                    console.warn("Could not read Void level:", e);
+                }
+
             } catch (e) {
                 console.warn("Could not read V2 stats (contract update pending?)", e);
             }
@@ -427,8 +446,115 @@
         coalOreBalance,
         tbaBalance,
         miningCharm,
-        woodcuttingCharm
+        woodcuttingCharm,
+        voidLevel
     };
+  }
+
+  async function fetchLeaderboard() {
+      if (!showLeaderboard) return;
+      
+      const publicClient = getPublicClient(config);
+      try {
+          const data = await publicClient.readContract({
+              address: CONTRACT_ADDRESSES.Diamond as Address,
+              abi: ABIS.GameDiamond,
+              functionName: 'getLeaderboard',
+              args: []
+          }) as { tokenId: bigint, level: bigint }[];
+          
+          // Filter out empty entries and sort descending (contract should keep sorted but safe to ensure)
+          // Also failsafe filter out ghost Skiller #32 and impossible levels
+          leaderboardData = [...data]
+              .filter(entry => entry.level > 0n)
+              .filter(entry => entry.tokenId !== 32n && entry.level < 100n)
+              .sort((a, b) => Number(b.level - a.level));
+              
+          // Fetch Cost for user
+          if (selectedProfile) {
+              voidCost = await publicClient.readContract({
+                  address: CONTRACT_ADDRESSES.Diamond as Address,
+                  abi: ABIS.GameDiamond,
+                  functionName: 'getVoidCost',
+                  args: [selectedProfile.id]
+              }) as bigint;
+          }
+      } catch (e) {
+          console.error("Failed to fetch leaderboard:", e);
+      }
+  }
+
+  $: if (showLeaderboard) {
+      fetchLeaderboard();
+  }
+
+  async function handleSacrifice() {
+      if (!selectedProfile || !account || actionLoading) return;
+      
+      // Double check balance before starting
+      if ((selectedProfile.woodBalance || 0n) < voidCost || (selectedProfile.ironOreBalance || 0n) < voidCost) {
+          return; // Button should be disabled anyway
+      }
+
+      actionLoading = 'sacrifice';
+      
+      try {
+        const walletClient = await getWalletClient(config);
+        const publicClient = getPublicClient(config);
+        
+        const { request } = await publicClient.simulateContract({
+            account,
+            address: CONTRACT_ADDRESSES.Diamond as Address,
+            abi: ABIS.GameDiamond,
+            functionName: 'sacrificeToVoid',
+            args: [selectedProfile.id]
+        });
+        
+        const hash = await walletClient.writeContract(request);
+        showToast('The Void Hungers...');
+        
+        // Optimistic Update: Manually reduce balance for immediate feedback
+        if (selectedProfile) {
+            selectedProfile.woodBalance = (selectedProfile.woodBalance || 0n) - voidCost;
+            selectedProfile.ironOreBalance = (selectedProfile.ironOreBalance || 0n) - voidCost;
+            
+            // Optimistically update Void Level
+            const currentLevel = selectedProfile.voidLevel || 0n;
+            const nextLevel = currentLevel + 1n;
+            selectedProfile.voidLevel = nextLevel;
+            
+            // Optimistically update Cost for next level: 100 * (nextLevel + 1)^2
+            // The contract calculates cost for targeting (current + 1).
+            // So if we are now at `nextLevel`, the cost for `nextLevel + 1` is:
+            const targetLevel = nextLevel + 1n;
+            voidCost = 100n * (targetLevel * targetLevel);
+
+            // Force reactivity
+            profiles = profiles.map(p => p.id === selectedProfile!.id ? selectedProfile! : p);
+        }
+
+        await publicClient.waitForTransactionReceipt({ hash });
+        
+        showToast('Sacrifice Accepted!', 'level-up');
+        await loadProfiles(true);
+        await fetchLeaderboard(); // Refresh board
+        
+      } catch (e: any) {
+          console.error("Sacrifice failed:", e);
+          // Clean error message
+          let msg = e.message || "Unknown Error";
+          if (msg.includes("The Void demands more Logs")) msg = "Not enough Oak Logs";
+          else if (msg.includes("The Void demands more Ore")) msg = "Not enough Iron Ore";
+          else if (msg.includes("User rejected")) msg = "Transaction Cancelled";
+          else if (msg.length > 50) msg = "Sacrifice Failed"; // Fallback for long RPC errors
+          
+          showToast(msg, 'error');
+          
+          // Revert optimistic update if it failed (reload profile)
+          await loadProfiles(true);
+      } finally {
+          actionLoading = null;
+      }
   }
 
   async function refreshCurrentProfile() {
@@ -998,9 +1124,9 @@
         
         await loadProfiles(true);
         showToast('Purchase Complete!', 'inventory');
-        showToast(item === 'mining-charm' ? '+1 Rock Charm' : '+1 Tree Charm', 'item-received');
+        showToast(item === 'mining-charm' ? '+1 Rock Charm' : '+1 Tree Charm', item === 'mining-charm' ? 'item-mine-charm' : 'item-wood-charm');
         
-        showShop = false;
+        // showShop = false; // Keep shop open for multi-buy
       } catch (e: any) {
           console.error("Buy failed:", e);
           showToast(`Buy failed: ${e.message}`, 'error');
@@ -1565,16 +1691,10 @@
                                 {:else if selectedItem.name.includes('Tree Charm')} 
                                     <div style="position: relative; width: 48px; height: 48px; display: flex; align-items: center; justify-content: center; margin: 0 auto;">
                                         <Gem size={48} color="#4ade80"/>
-                                        <div style="position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); display: flex; align-items: center; justify-content: center;">
-                                            <TreeDeciduous size={24} color="#4ade80"/>
-                                        </div>
                                     </div>
                                 {:else if selectedItem.name.includes('Rock Charm')} 
                                     <div style="position: relative; width: 48px; height: 48px; display: flex; align-items: center; justify-content: center; margin: 0 auto;">
                                         <Gem size={48} color="#b0bec5"/>
-                                        <div style="position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); display: flex; align-items: center; justify-content: center;">
-                                            <Mountain size={24} color="#b0bec5"/>
-                                        </div>
                                     </div>
                                 {/if}
                             </div>
@@ -1646,26 +1766,20 @@
                         {/if}
 
                         <!-- Charms -->
-                        {#if selectedProfile.miningCharm}
-                             <div class="inventory-item" title="Rock Charm" on:click={() => selectedItem = { id: 401n, name: 'Rock Charm', balance: 1n }}>
-                                <div class="charm-icon-wrapper rock" style="width: 32px; height: 32px; border-width: 1.5px; box-shadow: none; margin: 0;">
-                                     <Gem size={16} color="#b0bec5"/>
-                                     <div class="charm-icon-overlay" style="padding: 1px; border-width: 0.5px;">
-                                         <Mountain size={8} color="#b0bec5"/>
-                                     </div>
+                        {#if (selectedProfile.miningCharm || 0n) > 0n}
+                             <div class="inventory-item" title="Rock Charm" on:click={() => selectedItem = { id: 401n, name: 'Rock Charm', balance: selectedProfile?.miningCharm || 0n }}>
+                                <div class="charm-icon-wrapper rock" style="display:flex; align-items:center; justify-content:center;">
+                                     <Gem size={24} color="#b0bec5"/>
                                 </div>
-                                <div class="item-count">1</div>
+                                <div class="item-count">{selectedProfile.miningCharm}</div>
                             </div>
                         {/if}
-                        {#if selectedProfile.woodcuttingCharm}
-                             <div class="inventory-item" title="Tree Charm" on:click={() => selectedItem = { id: 402n, name: 'Tree Charm', balance: 1n }}>
-                                <div class="charm-icon-wrapper tree" style="width: 32px; height: 32px; border-width: 1.5px; box-shadow: none; margin: 0;">
-                                     <Gem size={16} color="#4ade80"/>
-                                     <div class="charm-icon-overlay" style="padding: 1px; border-width: 0.5px;">
-                                         <TreeDeciduous size={8} color="#4ade80"/>
-                                     </div>
+                        {#if (selectedProfile.woodcuttingCharm || 0n) > 0n}
+                             <div class="inventory-item" title="Tree Charm" on:click={() => selectedItem = { id: 402n, name: 'Tree Charm', balance: selectedProfile?.woodcuttingCharm || 0n }}>
+                                <div class="charm-icon-wrapper tree" style="display:flex; align-items:center; justify-content:center;">
+                                     <Gem size={24} color="#4ade80"/>
                                 </div>
-                                <div class="item-count">1</div>
+                                <div class="item-count">{selectedProfile.woodcuttingCharm}</div>
                             </div>
                         {/if}
                     </div>
@@ -1774,11 +1888,8 @@
                     <!-- Woodcutting Charm (Tree) -->
                     <div class="quest-card">
                          <div class="quest-icon">
-                             <div class="charm-icon-wrapper tree" style="display:flex; align-items:center; justify-content:center; position:relative; height: 32px; width: 32px; margin: 0 auto;">
+                             <div class="charm-icon-wrapper tree" style="display:flex; align-items:center; justify-content:center;">
                                  <Gem size={28} color="#4ade80"/>
-                                 <div class="charm-icon-overlay" style="position:absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); display: flex; align-items: center; justify-content: center;">
-                                     <TreeDeciduous size={14} color="#4ade80"/>
-                                 </div>
                              </div>
                          </div>
                         <div class="quest-info">
@@ -1804,13 +1915,10 @@
                     <!-- Mining Charm (Rock) -->
                     <div class="quest-card">
                         <div class="quest-icon">
-                             <div class="charm-icon-wrapper rock" style="display:flex; align-items:center; justify-content:center; position:relative; height: 32px; width: 32px; margin: 0 auto;">
+                             <div class="charm-icon-wrapper rock" style="display:flex; align-items:center; justify-content:center;">
                                  <Gem size={28} color="#b0bec5"/>
-                                 <div class="charm-icon-overlay" style="position:absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); display: flex; align-items: center; justify-content: center;">
-                                     <Mountain size={14} color="#b0bec5"/>
-                                 </div>
                              </div>
-                        </div>
+                         </div>
                         <div class="quest-info">
                             <h4>Rock Charm</h4>
                              <div class="cost">
@@ -1958,6 +2066,63 @@
         </div>
     {/if}
 
+    <!-- Void / Leaderboard Modal -->
+    {#if showLeaderboard}
+        <div class="modal-backdrop" on:click={() => showLeaderboard = false}>
+            <div class="modal-content void-modal" on:click|stopPropagation>
+                <div class="void-header">
+                    <div class="void-stats">
+                         <div class="stat-box">
+                            <span class="label">Void Level</span>
+                            <span class="value">{selectedProfile?.voidLevel || 0}</span>
+                        </div>
+                    </div>
+                </div>
+    
+                <div class="void-actions">
+                    <div class="recipe-card" style="border-color: #9c27b0;">
+                        <div class="recipe-icon"><Trophy size={24} color="#9c27b0"/></div>
+                        <div class="recipe-info">
+                            <div class="cost">
+                                <span>{Number(voidCost).toLocaleString()} Oak Logs</span>
+                                <span>{Number(voidCost).toLocaleString()} Iron Ore</span>
+                            </div>
+                        </div>
+                        <button 
+                            class="craft-btn" 
+                            style="background: #9c27b0;"
+                            on:click={() => handleSacrifice()} 
+                            disabled={!!actionLoading || (selectedProfile?.woodBalance || 0n) < voidCost || (selectedProfile?.ironOreBalance || 0n) < voidCost}
+                        >
+                            {#if actionLoading === 'sacrifice'}
+                                <div class="spinner-small"></div>
+                            {:else}
+                                Sacrifice
+                            {/if}
+                        </button>
+                    </div>
+                </div>
+    
+                <div class="leaderboard-section">
+                    <h4>Leaderboard</h4>
+                    <div class="leaderboard-list">
+                        {#if leaderboardData.length === 0}
+                            <div class="empty-state">No souls have entered the Void yet.</div>
+                        {:else}
+                            {#each leaderboardData as entry, i}
+                                <div class="leaderboard-row {entry.tokenId === selectedProfile?.id ? 'highlight' : ''}">
+                                    <span class="rank">#{i+1}</span>
+                                    <span class="name">Skiller #{entry.tokenId}</span>
+                                    <span class="level">Level {entry.level}</span>
+                                </div>
+                            {/each}
+                        {/if}
+                    </div>
+                </div>
+            </div>
+        </div>
+    {/if}
+
     <main>
         {#if errorMsg}
             <div class="error-banner">{errorMsg}</div>
@@ -2076,35 +2241,39 @@
                 </button>
             {/if}
         {:else}
-            <!-- Footer nav -->
-            <div class="footer-left">
-                <button class="square-btn" on:click={() => showQuests = !showQuests}>
-                    <HelpCircle size={24} />
+            <!-- Leaderboard (Leftmost) -->
+            {#if selectedProfile.version === 'v2'}
+                <button class="square-btn" on:click={() => showLeaderboard = !showLeaderboard}>
+                    <Trophy size={24} />
                 </button>
-            </div>
-            <div class="footer-center">
-                <!-- Center Group: Shop, Skills, Crafting -->
-                {#if selectedProfile}
-                     <div style="display: flex; gap: 8px;">
-                    <button class="square-btn" on:click={() => showShop = !showShop}>
-                        <Gem size={24} />
-                    </button>
-                        <button class="square-btn" on:click={() => showSkills = !showSkills}>
-                            <BarChart3 size={24} />
-                        </button>
-                        {#if selectedProfile.version === 'v2'}
-                             <button class="square-btn" on:click={() => showCrafting = !showCrafting}>
-                                <Hammer size={24} />
-                            </button>
-                        {/if}
-                     </div>
-                {/if}
-            </div>
-            <div class="footer-right">
-                <button class="square-btn" on:click={() => showInventory = !showInventory}>
-                    <Backpack size={24} />
+            {/if}
+
+            <!-- Quests -->
+            <button class="square-btn" on:click={() => showQuests = !showQuests}>
+                <HelpCircle size={24} />
+            </button>
+
+            <!-- Shop -->
+            <button class="square-btn" on:click={() => showShop = !showShop}>
+                <Gem size={24} />
+            </button>
+
+            <!-- Skills -->
+            <button class="square-btn" on:click={() => showSkills = !showSkills}>
+                <BarChart3 size={24} />
+            </button>
+
+            <!-- Crafting -->
+            {#if selectedProfile.version === 'v2'}
+                <button class="square-btn" on:click={() => showCrafting = !showCrafting}>
+                    <Hammer size={24} />
                 </button>
-            </div>
+            {/if}
+
+            <!-- Inventory (Rightmost) -->
+            <button class="square-btn" on:click={() => showInventory = !showInventory}>
+                <Backpack size={24} />
+            </button>
         {/if}
     </footer>
 </div>
@@ -2366,18 +2535,18 @@
     .charm-icon-wrapper {
         width: 48px;
         height: 48px;
-        border-radius: 50%;
-        border: 2px solid;
+        /* border-radius: 50%; */
+        /* border: 2px solid; */
         display: flex;
         justify-content: center;
         align-items: center;
-        margin-bottom: 0.5rem;
-        background: rgba(0,0,0,0.3);
+        margin-bottom: 0; /* Removed margin to center perfectly */
+        background: transparent;
         position: relative;
     }
     
-    .charm-icon-wrapper.rock { border-color: #b0bec5; }
-    .charm-icon-wrapper.tree { border-color: #4ade80; }
+    .charm-icon-wrapper.rock { /* border-color: #b0bec5; */ }
+    .charm-icon-wrapper.tree { /* border-color: #4ade80; */ }
     
     .charm-icon-overlay {
         position: absolute;
@@ -2628,6 +2797,8 @@
     .toast.item-log { background: #252525; border-left: 4px solid #4ade80; color: #4ade80; }
     .toast.item-ore { background: #252525; border-left: 4px solid #b0bec5; color: #b0bec5; }
     .toast.item-gold { background: #252525; border-left: 4px solid #ffd700; color: #ffd700; }
+    .toast.item-wood-charm { background: #252525; border-left: 4px solid #4ade80; color: #4ade80; }
+    .toast.item-mine-charm { background: #252525; border-left: 4px solid #b0bec5; color: #b0bec5; }
     .toast-container {
         position: absolute;
         top: 1rem;
@@ -2800,5 +2971,39 @@
         border-radius: 50%;
         animation: spin 1s linear infinite;
     }
+
+    /* Void Modal */
+    .void-modal { 
+        border-color: #9c27b0; 
+        max-height: 80vh; 
+        display: flex; 
+        flex-direction: column;
+        /* Centering Logic */
+        top: 50% !important;
+        left: 50% !important;
+        transform: translate(-50%, -50%);
+        bottom: auto;
+        right: auto;
+        max-width: 320px;
+        width: 90%;
+    }
+    .void-header { text-align: center; margin-bottom: 1rem; }
+    .void-header h3 { color: #e1bee7; margin: 0 0 0.5rem 0; }
+    .void-stats { display: flex; justify-content: center; gap: 1rem; margin-bottom: 1rem; }
+    .stat-box { display: flex; flex-direction: column; align-items: center; background: rgba(156, 39, 176, 0.1); padding: 0.5rem 1rem; border-radius: 8px; border: 1px solid #9c27b0; }
+    .stat-box .label { font-size: 0.7rem; color: #e1bee7; text-transform: uppercase; }
+    .stat-box .value { font-size: 1.5rem; font-weight: bold; color: white; }
+    
+    .void-actions { margin-bottom: 1.5rem; }
+    
+    /* Force cache break v2 */
+    .leaderboard-section { flex: 1; overflow: hidden; display: flex; flex-direction: column; }
+    .leaderboard-section h4 { color: #e1bee7; margin: 0 0 0.5rem 0; text-align: center; font-size: 0.9rem; text-transform: uppercase; letter-spacing: 1px; }
+    .leaderboard-list { overflow-y: auto; flex: 1; display: flex; flex-direction: column; gap: 4px; max-height: 200px; }
+    .leaderboard-row { display: flex; align-items: center; padding: 0.5rem; background: #252525; border-radius: 6px; border: 1px solid #333; }
+    .leaderboard-row.highlight { border-color: #9c27b0; background: rgba(156, 39, 176, 0.1); }
+    .leaderboard-row .rank { font-weight: bold; color: #888; width: 30px; }
+    .leaderboard-row .name { flex: 1; color: white; font-size: 0.9rem; }
+    .leaderboard-row .level { font-weight: bold; color: #e1bee7; }
 </style>
 

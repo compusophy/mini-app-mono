@@ -8,6 +8,11 @@ import "../interfaces/IERC6551Registry.sol";
 library LibGame {
     bytes32 constant GAME_STORAGE_POSITION = keccak256("skiller.game.storage");
 
+    struct LeaderboardEntry {
+        uint256 tokenId;
+        uint256 level;
+    }
+
     struct GameStorage {
         SkillerItemsV2 items;
         SkillerProfileV2 profile;
@@ -21,6 +26,10 @@ library LibGame {
         // Experience storage
         mapping(uint256 => mapping(uint256 => uint256)) xp; // tokenId -> skillId -> xp
         address migrationContract;
+
+        // Void Leaderboard (Top 100)
+        LeaderboardEntry[100] voidLeaderboard;
+        uint256 minLeaderboardLevel;
     }
 
     function gameStorage() internal pure returns (GameStorage storage gs) {

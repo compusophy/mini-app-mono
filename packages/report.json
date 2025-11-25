@@ -1,0 +1,355 @@
+{
+  "summary": {
+    "timestamp": "2025-11-25T00:23:28.149Z",
+    "totalPlayersActive": 771,
+    "economy": {
+      "gold": 59200,
+      "wood": 194211,
+      "ore": 177529
+    }
+  },
+  "top10_overall": [
+    {
+      "id": 80,
+      "tba": "0xFA293889d76fee6437e73E1a301deB7175681ca5",
+      "mining": {
+        "level": 84,
+        "xp": 698010
+      },
+      "woodcutting": {
+        "level": 87,
+        "xp": 748000
+      },
+      "balance": {
+        "gold": 1365,
+        "wood": 74460,
+        "ore": 69461
+      }
+    },
+    {
+      "id": 58,
+      "tba": "0x6F4Dd032A802ba62e3E5c69bd0406D964310C759",
+      "mining": {
+        "level": 70,
+        "xp": 482940
+      },
+      "woodcutting": {
+        "level": 70,
+        "xp": 482900
+      },
+      "balance": {
+        "gold": 1265,
+        "wood": 38169,
+        "ore": 38091
+      }
+    },
+    {
+      "id": 491,
+      "tba": "0xE998aE473A8F17624d2F1CFBE349C5e0744EC24a",
+      "mining": {
+        "level": 50,
+        "xp": 246200
+      },
+      "woodcutting": {
+        "level": 52,
+        "xp": 266700
+      },
+      "balance": {
+        "gold": 9325,
+        "wood": 25430,
+        "ore": 22920
+      }
+    },
+    {
+      "id": 62,
+      "tba": "0x1D34E6bdaF57cE52fC50476FD164E2c445BA5be3",
+      "mining": {
+        "level": 42,
+        "xp": 171900
+      },
+      "woodcutting": {
+        "level": 50,
+        "xp": 244560
+      },
+      "balance": {
+        "gold": 3605,
+        "wood": 23176,
+        "ore": 15930
+      }
+    },
+    {
+      "id": 29,
+      "tba": "0x87F57216bC021fAef6e4e391e4ca90a71EDb10ed",
+      "mining": {
+        "level": 33,
+        "xp": 105220
+      },
+      "woodcutting": {
+        "level": 33,
+        "xp": 105580
+      },
+      "balance": {
+        "gold": 5344,
+        "wood": 10197,
+        "ore": 10241
+      }
+    },
+    {
+      "id": 185,
+      "tba": "0xe40C6B13Dae38F83049c155f133E314F97cc8E8D",
+      "mining": {
+        "level": 23,
+        "xp": 49800
+      },
+      "woodcutting": {
+        "level": 27,
+        "xp": 70430
+      },
+      "balance": {
+        "gold": 3345,
+        "wood": 6143,
+        "ore": 4440
+      }
+    },
+    {
+      "id": 264,
+      "tba": "0xeA810b53A7d8Dd8c4e810Ec9e2d69d9561e0B67D",
+      "mining": {
+        "level": 21,
+        "xp": 44070
+      },
+      "woodcutting": {
+        "level": 19,
+        "xp": 35330
+      },
+      "balance": {
+        "gold": 25,
+        "wood": 3533,
+        "ore": 4407
+      }
+    },
+    {
+      "id": 792,
+      "tba": "0x7D2f5346AB9d40694c9bF59ccb835a2CA930B8db",
+      "mining": {
+        "level": 14,
+        "xp": 18440
+      },
+      "woodcutting": {
+        "level": 14,
+        "xp": 18260
+      },
+      "balance": {
+        "gold": 65,
+        "wood": 1506,
+        "ore": 1244
+      }
+    },
+    {
+      "id": 317,
+      "tba": "0x77c9efFFA88c1B76C892F1C1f716d9df5229acB5",
+      "mining": {
+        "level": 13,
+        "xp": 15250
+      },
+      "woodcutting": {
+        "level": 13,
+        "xp": 15170
+      },
+      "balance": {
+        "gold": 25,
+        "wood": 1317,
+        "ore": 1325
+      }
+    },
+    {
+      "id": 50,
+      "tba": "0xe618f548Aa6bE1F05e4ce730C6cad10d25Ec5aB1",
+      "mining": {
+        "level": 11,
+        "xp": 10120
+      },
+      "woodcutting": {
+        "level": 14,
+        "xp": 18220
+      },
+      "balance": {
+        "gold": 5735,
+        "wood": 1082,
+        "ore": 892
+      }
+    }
+  ],
+  "top10_rich": [
+    {
+      "id": 491,
+      "tba": "0xE998aE473A8F17624d2F1CFBE349C5e0744EC24a",
+      "mining": {
+        "level": 50,
+        "xp": 246200
+      },
+      "woodcutting": {
+        "level": 52,
+        "xp": 266700
+      },
+      "balance": {
+        "gold": 9325,
+        "wood": 25430,
+        "ore": 22920
+      }
+    },
+    {
+      "id": 1,
+      "tba": "0x3384aF3cEE93F577697C1431De8C2589f5060F4B",
+      "mining": {
+        "level": 8,
+        "xp": 6330
+      },
+      "woodcutting": {
+        "level": 4,
+        "xp": 1480
+      },
+      "balance": {
+        "gold": 6957,
+        "wood": 49,
+        "ore": 614
+      }
+    },
+    {
+      "id": 50,
+      "tba": "0xe618f548Aa6bE1F05e4ce730C6cad10d25Ec5aB1",
+      "mining": {
+        "level": 11,
+        "xp": 10120
+      },
+      "woodcutting": {
+        "level": 14,
+        "xp": 18220
+      },
+      "balance": {
+        "gold": 5735,
+        "wood": 1082,
+        "ore": 892
+      }
+    },
+    {
+      "id": 29,
+      "tba": "0x87F57216bC021fAef6e4e391e4ca90a71EDb10ed",
+      "mining": {
+        "level": 33,
+        "xp": 105220
+      },
+      "woodcutting": {
+        "level": 33,
+        "xp": 105580
+      },
+      "balance": {
+        "gold": 5344,
+        "wood": 10197,
+        "ore": 10241
+      }
+    },
+    {
+      "id": 62,
+      "tba": "0x1D34E6bdaF57cE52fC50476FD164E2c445BA5be3",
+      "mining": {
+        "level": 42,
+        "xp": 171900
+      },
+      "woodcutting": {
+        "level": 50,
+        "xp": 244560
+      },
+      "balance": {
+        "gold": 3605,
+        "wood": 23176,
+        "ore": 15930
+      }
+    },
+    {
+      "id": 185,
+      "tba": "0xe40C6B13Dae38F83049c155f133E314F97cc8E8D",
+      "mining": {
+        "level": 23,
+        "xp": 49800
+      },
+      "woodcutting": {
+        "level": 27,
+        "xp": 70430
+      },
+      "balance": {
+        "gold": 3345,
+        "wood": 6143,
+        "ore": 4440
+      }
+    },
+    {
+      "id": 80,
+      "tba": "0xFA293889d76fee6437e73E1a301deB7175681ca5",
+      "mining": {
+        "level": 84,
+        "xp": 698010
+      },
+      "woodcutting": {
+        "level": 87,
+        "xp": 748000
+      },
+      "balance": {
+        "gold": 1365,
+        "wood": 74460,
+        "ore": 69461
+      }
+    },
+    {
+      "id": 58,
+      "tba": "0x6F4Dd032A802ba62e3E5c69bd0406D964310C759",
+      "mining": {
+        "level": 70,
+        "xp": 482940
+      },
+      "woodcutting": {
+        "level": 70,
+        "xp": 482900
+      },
+      "balance": {
+        "gold": 1265,
+        "wood": 38169,
+        "ore": 38091
+      }
+    },
+    {
+      "id": 1141,
+      "tba": "0x16dA0Ad372D825Ca601a0D9a5d995658495bc055",
+      "mining": {
+        "level": 10,
+        "xp": 8710
+      },
+      "woodcutting": {
+        "level": 8,
+        "xp": 5330
+      },
+      "balance": {
+        "gold": 1065,
+        "wood": 53,
+        "ore": 271
+      }
+    },
+    {
+      "id": 34,
+      "tba": "0x921ef84356E8676302E4c2C8705d134141f3bE30",
+      "mining": {
+        "level": 12,
+        "xp": 13900
+      },
+      "woodcutting": {
+        "level": 12,
+        "xp": 12830
+      },
+      "balance": {
+        "gold": 955,
+        "wood": 943,
+        "ore": 910
+      }
+    }
+  ]
+}
