@@ -11,6 +11,7 @@ contract ShopFacet {
     // Trinkets
     uint256 constant MINING_CHARM = 401;
     uint256 constant WOODCUTTING_CHARM = 402;
+    uint256 constant GOLD_CHARM = 403;
 
     event ItemPurchased(address indexed tba, uint256 itemId, uint256 cost);
 
@@ -22,9 +23,11 @@ contract ShopFacet {
         uint256 cost = 0;
 
         if (itemId == MINING_CHARM) {
-            cost = 500 * 10**18; // 500 Gold
+            cost = 1000 * 10**18; // 1000 Gold
         } else if (itemId == WOODCUTTING_CHARM) {
-            cost = 500 * 10**18; // 500 Gold
+            cost = 1000 * 10**18; // 1000 Gold
+        } else if (itemId == GOLD_CHARM) {
+            cost = 100000 * 10**18; // 100,000 Gold
         } else {
             revert("Shop: Invalid Item ID");
         }

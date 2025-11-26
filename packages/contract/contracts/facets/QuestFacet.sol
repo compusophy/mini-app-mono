@@ -12,6 +12,7 @@ contract QuestFacet is IERC1155Receiver {
     uint256 constant GOLD_COINS = 1;
     uint256 constant OAK_LOG = 201;
     uint256 constant IRON_ORE = 301;
+    uint256 constant GOLD_CHARM = 403;
 
     function onERC1155Received(
         address, // operator
@@ -33,6 +34,8 @@ contract QuestFacet is IERC1155Receiver {
         }
 
         uint256 questId = abi.decode(data, (uint256));
+        uint256 goldCharms = gs.items.balanceOf(from, GOLD_CHARM);
+        uint256 charmMultiplier = 1 + goldCharms;
         
         if (questId == 1) {
             // Contribute 50 Oak Logs
@@ -40,15 +43,17 @@ contract QuestFacet is IERC1155Receiver {
             require(value == 50, "Quest 1: Must be 50 items");
             
             // Reward: 100 Gold
-            gs.items.mint(from, GOLD_COINS, 100 * 10**18, "");
-            emit QuestCompleted(from, questId, 100 * 10**18);
+            uint256 reward = 100 * 10**18 * charmMultiplier;
+            gs.items.mint(from, GOLD_COINS, reward, "");
+            emit QuestCompleted(from, questId, reward);
         } else if (questId == 2) {
              // Contribute 50 Iron Ore
              require(id == IRON_ORE, "Quest 2: Must be Iron Ore");
              require(value == 50, "Quest 2: Must be 50 items");
              
-             gs.items.mint(from, GOLD_COINS, 100 * 10**18, "");
-             emit QuestCompleted(from, questId, 100 * 10**18);
+             uint256 reward = 100 * 10**18 * charmMultiplier;
+             gs.items.mint(from, GOLD_COINS, reward, "");
+             emit QuestCompleted(from, questId, reward);
         } else if (questId == 3) {
             // King's Tribute: Contribute 1000 Gold Coins
             require(id == GOLD_COINS, "Quest 3: Must be Gold Coins");
@@ -65,9 +70,10 @@ contract QuestFacet is IERC1155Receiver {
                 value,
                 gasleft() // Add gasleft for more entropy
             )));
-            uint256 multiplier = seed % 201; 
+            uint256 rngMultiplier = seed % 201; 
             
-            uint256 reward = (value * multiplier) / 100;
+            uint256 reward = (value * rngMultiplier) / 100;
+            reward = reward * charmMultiplier;
             
             if (reward > 0) {
                 gs.items.mint(from, GOLD_COINS, reward, "");

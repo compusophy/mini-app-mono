@@ -49,11 +49,15 @@ contract WoodcuttingFacet {
         return level;
     }
 
-    function chopOak(uint256 tokenId) external {
+    function chopOak(uint256 tokenId, uint256 version) external {
+        LibGame.GameStorage storage gs = LibGame.gameStorage();
+        require(version >= gs.minGameVersion, "Client Version Outdated - Please Refresh");
         _chop(tokenId, OAK_LOG);
     }
 
-    function chopWillow(uint256 tokenId) external {
+    function chopWillow(uint256 tokenId, uint256 version) external {
+        LibGame.GameStorage storage gs = LibGame.gameStorage();
+        require(version >= gs.minGameVersion, "Client Version Outdated - Please Refresh");
         _chop(tokenId, WILLOW_LOG);
     }
 

@@ -66,10 +66,17 @@ contract GameFacet {
         return gs.xp[tokenId][skillId];
     }
 
-    // Helper for all stats
-    function getStats(uint256 tokenId) external view returns (uint256 miningXp, uint256 woodcuttingXp) {
+    // getStats removed to defer to StatsFacet
+    // function getStats... 
+    // We remove it from the contract source so we can redeploy and remove its selector from the diamond cut for GameFacet,
+    // OR we implement it correctly.
+    // Implementing correctly is harder without importing StatsFacet logic.
+    // Removing it is cleaner.
+
+
+    function setMinGameVersion(uint256 _version) external {
+        LibDiamond.enforceIsContractOwner();
         LibGame.GameStorage storage gs = LibGame.gameStorage();
-        miningXp = gs.xp[tokenId][1];
-        woodcuttingXp = gs.xp[tokenId][2];
+        gs.minGameVersion = _version;
     }
 }

@@ -7,6 +7,7 @@
   import { encodeFunctionData, type Address } from 'viem';
   import { ABIS } from '$lib/abis';
   import addresses from '$lib/addresses.json';
+  import { APP_VERSION } from '$lib/version';
   import { Backpack, User, Axe, Pickaxe, Coins, TreeDeciduous, Mountain, ArrowLeft, BarChart3, Trophy, RefreshCw, Hammer, Trash2, Copy, HelpCircle, Send, Store, Gem } from '@lucide/svelte';
 
   const CONTRACT_ADDRESSES = addresses;
@@ -32,6 +33,7 @@
     coalOreBalance?: bigint;
     miningCharm?: bigint;
     woodcuttingCharm?: bigint;
+    goldCharm?: bigint;
     tbaBalance?: bigint; // Native ETH balance of TBA
     voidLevel?: bigint;
   };
@@ -41,6 +43,10 @@
   let accountBalance: bigint = 0n;
   let profiles: Profile[] = [];
   let selectedProfileId: bigint | null = null;
+  
+  // Version Check State
+  let isVersionValid = true;
+  let clientVersion = APP_VERSION;
   
   let loading = false;
   let isLoadingProfiles = false;
@@ -182,7 +188,18 @@
       if (num >= 100000) { // 100K+
           return Math.floor(num / 1000) + 'K';
       }
-      return num.toLocaleString();
+      return num.toLocaleString(); // Adds commas for < 100k
+  }
+
+  function formatInventoryNumber(value: number | bigint): string {
+    const num = Number(value);
+    if (num >= 10000000) { // 10M+
+        return Math.floor(num / 1000000) + 'M';
+    }
+    if (num >= 100000) { // 100K+ for inventory items
+        return Math.floor(num / 1000) + 'K';
+    }
+    return num.toLocaleString();
   }
 
   function truncateAddress(addr: string) {
@@ -215,6 +232,29 @@
     } catch (e) {
         console.log("Not in Mini App environment or SDK error:", e);
     }
+
+    // VERSION CHECK
+    const checkVersion = async () => {
+        try {
+            // Cache-busting unique query param
+            const res = await fetch(`/version.json?t=${new Date().getTime()}`);
+            if (res.ok) {
+                const data = await res.json();
+                if (data.version !== APP_VERSION) {
+                    isVersionValid = false;
+                    console.warn(`Version mismatch! Client: ${APP_VERSION}, Server: ${data.version}`);
+                }
+            }
+        } catch (e) {
+            console.error("Version check failed", e);
+        }
+    };
+    
+    // Check immediately
+    await checkVersion();
+    
+    // Check every minute
+    const versionInterval = setInterval(checkVersion, 60000);
 
     watchAccount(config, {
         onChange(data) {
@@ -255,6 +295,7 @@
     
     return () => {
         isMounted = false;
+        clearInterval(versionInterval);
     };
   });
 
@@ -367,6 +408,7 @@
     
     let miningCharm = 0n;
     let woodcuttingCharm = 0n;
+    let goldCharm = 0n;
 
     let miningLevel = 1n;
     let miningXp = 0n;
@@ -398,6 +440,7 @@
                 promises.push(publicClient.readContract({ address: itemsAddress as Address, abi: itemsAbi, functionName: 'balanceOf', args: [tbaAddress, 1n] })); // Gold
                 promises.push(publicClient.readContract({ address: itemsAddress as Address, abi: itemsAbi, functionName: 'balanceOf', args: [tbaAddress, 401n] })); // Mining Charm
                 promises.push(publicClient.readContract({ address: itemsAddress as Address, abi: itemsAbi, functionName: 'balanceOf', args: [tbaAddress, 402n] })); // Woodcutting Charm
+                promises.push(publicClient.readContract({ address: itemsAddress as Address, abi: itemsAbi, functionName: 'balanceOf', args: [tbaAddress, 403n] })); // Gold Charm
             } else {
                  if (CONTRACT_ADDRESSES.SkillerGold) {
                      // Simplified V1 Gold handling
@@ -418,6 +461,7 @@
                 goldBalance = results[8] as bigint;
                 miningCharm = results[9] as bigint;
                 woodcuttingCharm = results[10] as bigint;
+                goldCharm = results[11] as bigint;
             }
         }
 
@@ -527,6 +571,7 @@
         tbaBalance,
         miningCharm,
         woodcuttingCharm,
+        goldCharm,
         voidLevel
     };
   }
@@ -627,7 +672,14 @@
           console.error("Sacrifice failed:", e);
           // Clean error message
           let msg = e.message || "Unknown Error";
-          if (msg.includes("The Void demands more Logs")) msg = "Not enough Oak Logs";
+          
+          // Catch contract revert for incorrect logic or outdated ABI params
+          if (msg.includes("execution reverted") || msg.includes("contract runner does not support")) {
+              msg = "Transaction failed. Please reload.";
+              // Force check version on critical failure
+              checkVersion();
+          }
+          else if (msg.includes("The Void demands more Logs")) msg = "Not enough Oak Logs";
           else if (msg.includes("The Void demands more Ore")) msg = "Not enough Iron Ore";
           else if (msg.includes("User rejected")) msg = "Transaction Cancelled";
           else if (msg.length > 50) msg = "Sacrifice Failed"; // Fallback for long RPC errors
@@ -852,10 +904,15 @@
             address = CONTRACT_ADDRESSES.Diamond as Address;
             abi = ABIS.GameDiamond;
             
+            // Convert version to BigInt
+            const versionInt = BigInt(APP_VERSION.split('.').join(''));
+            
             if (action === 'chop') {
                  functionName = 'chopOak';
+                 args = [args[0], versionInt];
             } else if (action === 'mine') {
                 functionName = 'mineIron';
+                args = [args[0], versionInt];
             } else if (action === 'claimStarterPickaxe') {
                 functionName = 'claimStarterPickaxe';
             } else {
@@ -1144,22 +1201,35 @@
         // Reload profiles first so the balance updates visually when the spinner stops
         await loadProfiles(true);
         
+        // Calculate expected reward
+        const goldCharms = selectedProfile.goldCharm || 0n;
+        const charmMultiplier = 1n + goldCharms;
+        const baseReward = 100n;
+        const totalReward = baseReward * charmMultiplier;
+
         if (questId === 3) {
              // Calculate reward based on balance change
+             // Or trust the charm multiplier logic we know exists
+             // The random reward is hard to predict without parsing logs, but we can show ranges or wait for balance diff.
+             // Let's trust the balance diff approach for King's Tribute which has RNG.
+             
              const updatedProfile = profiles.find(p => p.id === selectedProfile!.id);
              const finalGold = updatedProfile?.goldBalance || initialGold;
              const cost = 1000n * 10n**18n;
              
              // Reward = Final - (Initial - Cost)
-             // If reward is 0 (lost everything), it will show +0 Gold Coins which is correct
-             const rewardWei = finalGold - initialGold + cost;
+             const rewardWei = finalGold - (initialGold - cost); // final = initial - cost + reward => reward = final - initial + cost
              const rewardFormatted = Math.floor(Number(rewardWei) / 1e18);
 
              showToast('Quest Completed!', 'inventory');
-             showToast(`+${rewardFormatted} Gold Coins`, 'item-received');
+             if (rewardFormatted > 0) {
+                showToast(`+${rewardFormatted.toLocaleString()} Gold Coins`, 'item-received');
+             } else {
+                showToast('The King was not pleased.', 'error');
+             }
         } else {
              showToast('Quest Completed!', 'inventory');
-             showToast('+100 Gold Coins', 'item-received');
+             showToast(`+${totalReward.toLocaleString()} Gold Coins`, 'item-received');
         }
 
       } catch (e: any) {
@@ -1170,7 +1240,7 @@
       }
   }
 
-  async function handleBuy(item: 'mining-charm' | 'woodcutting-charm') {
+  async function handleBuy(item: 'mining-charm' | 'woodcutting-charm' | 'gold-charm') {
       if (!account || actionLoading || !selectedProfile) return;
       actionLoading = 'buy';
       
@@ -1178,12 +1248,8 @@
         const walletClient = await getWalletClient(config);
         const publicClient = getPublicClient(config);
         const address = CONTRACT_ADDRESSES.Diamond as Address;
-        const abi = ABIS.GameDiamond; // We need to add buyItem to ABI or use a temporary snippet if it's not in the main definition yet
-        // Since we just deployed, the ABI in frontend might be outdated.
-        // We can manually add the function signature for now or rely on wagmi if ABIS is updated.
-        // Let's assume we need to update ABIS or use a local partial ABI.
         
-        const itemId = item === 'mining-charm' ? 401n : 402n;
+        const itemId = item === 'mining-charm' ? 401n : (item === 'woodcutting-charm' ? 402n : 403n);
 
         const { request } = await publicClient.simulateContract({
             account,
@@ -1206,9 +1272,17 @@
         showToast('Buying...');
         await publicClient.waitForTransactionReceipt({ hash });
         
+        // Wait a moment for indexing/state update
+        await new Promise(r => setTimeout(r, 2000));
         await loadProfiles(true);
+        
         showToast('Purchase Complete!', 'inventory');
-        showToast(item === 'mining-charm' ? '+1 Rock Charm' : '+1 Tree Charm', item === 'mining-charm' ? 'item-mine-charm' : 'item-wood-charm');
+        
+        if (item === 'gold-charm') {
+            showToast('+1 Gold Charm', 'item-gold');
+        } else {
+            showToast(item === 'mining-charm' ? '+1 Rock Charm' : '+1 Tree Charm', item === 'mining-charm' ? 'item-mine-charm' : 'item-wood-charm');
+        }
         
         // showShop = false; // Keep shop open for multi-buy
       } catch (e: any) {
@@ -1436,8 +1510,9 @@
                  else if (sentItemName.includes('Iron Axe')) selectedProfile.ironAxeBalance = 0n;
                  else if (sentItemName.includes('Bronze Pickaxe')) selectedProfile.pickaxeBalance = 0n;
                  else if (sentItemName.includes('Iron Pickaxe')) selectedProfile.ironPickaxeBalance = 0n;
-                 else if (sentItemName.includes('Tree Charm')) selectedProfile.woodcuttingCharm = false;
-                 else if (sentItemName.includes('Rock Charm')) selectedProfile.miningCharm = false;
+                 else if (sentItemName.includes('Tree Charm')) selectedProfile.woodcuttingCharm = 0n;
+                 else if (sentItemName.includes('Rock Charm')) selectedProfile.miningCharm = 0n;
+                 else if (sentItemName.includes('Gold Charm')) selectedProfile.goldCharm = 0n;
              }
              selectedItem = null;
         } else {
@@ -1798,27 +1873,27 @@
                         <!-- Gold -->
                         <div class="inventory-item" title="Gold Coins" on:click={() => selectedItem = { id: 1n, name: 'Gold Coins', balance: selectedProfile?.goldBalance || 0n }}>
                             <div class="item-icon"><Coins size={24} color="#fbbf24"/></div>
-                            <div class="item-count">{Math.floor(Number(selectedProfile.goldBalance || 0n) / (selectedProfile.version === 'v2' ? 1e18 : 1))}</div>
+                            <div class="item-count">{formatInventoryNumber(Math.floor(Number(selectedProfile.goldBalance || 0n) / (selectedProfile.version === 'v2' ? 1e18 : 1)))}</div>
                         </div>
                         <!-- Wood -->
                         {#if (selectedProfile.woodBalance || 0n) > 0n}
                             <div class="inventory-item" title="Logs" on:click={() => selectedItem = { id: 201n, name: 'Oak Logs', balance: selectedProfile?.woodBalance || 0n }}>
                                 <div class="item-icon"><TreeDeciduous size={24} color="#4ade80"/></div> 
-                                <div class="item-count">{selectedProfile.woodBalance}</div>
+                                <div class="item-count">{formatInventoryNumber(selectedProfile.woodBalance)}</div>
                             </div>
                         {/if}
                         <!-- Ore -->
                         {#if (selectedProfile.oreBalance || 0n) > 0n && (selectedProfile.version === 'v1' || selectedProfile.oreBalance !== selectedProfile.ironOreBalance)}
                             <div class="inventory-item" title="Copper Ore" on:click={() => selectedItem = { id: 301n, name: 'Copper Ore', balance: selectedProfile?.oreBalance || 0n }}>
                                 <div class="item-icon"><Mountain size={24} color="#b0bec5"/></div>
-                                <div class="item-count">{selectedProfile.oreBalance}</div>
+                                <div class="item-count">{formatInventoryNumber(selectedProfile.oreBalance)}</div>
                             </div>
                         {/if}
                          <!-- V2: Iron Ore/Coal -->
                         {#if (selectedProfile.ironOreBalance || 0n) > 0n}
                              <div class="inventory-item" title="Iron Ore" on:click={() => selectedItem = { id: 301n, name: 'Iron Ore', balance: selectedProfile?.ironOreBalance || 0n }}>
                                 <div class="item-icon"><Mountain size={24} color="#b0bec5"/></div>
-                                <div class="item-count">{selectedProfile.ironOreBalance}</div>
+                                <div class="item-count">{formatInventoryNumber(selectedProfile.ironOreBalance)}</div>
                             </div>
                         {/if}
                         
@@ -1864,6 +1939,14 @@
                                      <Gem size={24} color="#4ade80"/>
                                 </div>
                                 <div class="item-count">{selectedProfile.woodcuttingCharm}</div>
+                            </div>
+                        {/if}
+                        {#if (selectedProfile.goldCharm || 0n) > 0n}
+                             <div class="inventory-item" title="Gold Charm" on:click={() => selectedItem = { id: 403n, name: 'Gold Charm', balance: selectedProfile?.goldCharm || 0n }}>
+                                <div class="charm-icon-wrapper gold" style="display:flex; align-items:center; justify-content:center;">
+                                     <Gem size={24} color="#ffd700"/>
+                                </div>
+                                <div class="item-count">{selectedProfile.goldCharm}</div>
                             </div>
                         {/if}
                     </div>
@@ -1959,6 +2042,28 @@
                         </button>
                     </div>
                 </div>
+                
+                <!-- Selected Item Details for Crafting/Shop context (if needed) or reusing modal structure -->
+                {#if selectedItem}
+                    <div class="recipe-card" style="margin-top: 1rem; border-color: #444;">
+                        {#if selectedItem.name === 'Gold Charm'}
+                            <div class="recipe-icon">
+                                <div class="charm-icon-wrapper gold" style="display:flex; align-items:center; justify-content:center;">
+                                     <Gem size={24} color="#ffd700"/>
+                                </div>
+                            </div>
+                        {:else}
+                            <!-- Fallback or other icon logic could go here if we wanted icons in details -->
+                        {/if}
+                        <div class="recipe-info">
+                            <h4>Item Details</h4>
+                            <div class="cost">
+                                <span>{selectedItem.name}</span>
+                                <span class="cost-text">Balance: {selectedItem.name.includes('Gold Coins') ? (Number(selectedItem.balance) / 1e18).toLocaleString() : Number(selectedItem.balance).toLocaleString()}</span>
+                            </div>
+                        </div>
+                    </div>
+                {/if}
             </div>
         </div>
     {/if}
@@ -1979,14 +2084,14 @@
                         <div class="quest-info">
                            <h4>Tree Charm</h4>
                            <div class="cost">
-                               <span style="color: #888;">Cost: 500 Gold Coins</span>
+                               <span style="color: #888;">Cost: 1,000 Gold Coins</span>
                            </div>
                        </div>
                        
                        <button 
                            class="quest-btn" 
                            on:click={() => handleBuy('woodcutting-charm')}
-                           disabled={!!actionLoading || (selectedProfile?.goldBalance || 0n) < 500n * 10n**18n}
+                           disabled={!!actionLoading || (selectedProfile?.goldBalance || 0n) < 1000n * 10n**18n}
                        >
                             {#if actionLoading === 'buy-wood'}
                                 <div class="spinner-small"></div>
@@ -2006,16 +2111,43 @@
                         <div class="quest-info">
                            <h4>Rock Charm</h4>
                             <div class="cost">
-                               <span style="color: #888;">Cost: 500 Gold Coins</span>
+                               <span style="color: #888;">Cost: 1,000 Gold Coins</span>
                            </div>
                        </div>
                        
                        <button 
                            class="quest-btn" 
                            on:click={() => handleBuy('mining-charm')}
-                           disabled={!!actionLoading || (selectedProfile?.goldBalance || 0n) < 500n * 10n**18n}
+                           disabled={!!actionLoading || (selectedProfile?.goldBalance || 0n) < 1000n * 10n**18n}
                        >
                             {#if actionLoading === 'buy-mine'}
+                                <div class="spinner-small"></div>
+                            {:else}
+                                Buy
+                            {/if}
+                        </button>
+                    </div>
+
+                    <!-- Gold Charm -->
+                    <div class="quest-card">
+                        <div class="quest-icon">
+                             <div class="charm-icon-wrapper gold" style="display:flex; align-items:center; justify-content:center;">
+                                 <Gem size={28} color="#ffd700"/>
+                             </div>
+                         </div>
+                        <div class="quest-info">
+                           <h4>Gold Charm</h4>
+                            <div class="cost">
+                               <span style="color: #888;">Cost: 100K Gold Coins</span>
+                           </div>
+                       </div>
+                       
+                       <button 
+                           class="quest-btn" 
+                           on:click={() => handleBuy('gold-charm')}
+                           disabled={!!actionLoading || (selectedProfile?.goldBalance || 0n) < 100000n * 10n**18n}
+                       >
+                            {#if actionLoading === 'buy-gold'}
                                 <div class="spinner-small"></div>
                             {:else}
                                 Buy
@@ -2085,7 +2217,7 @@
                         <div class="quest-info">
                             <h4>King's Tribute</h4>
                             <div class="cost">
-                                <span>Contribute 1000 Gold</span>
+                                <span>Contribute 1,000 Gold</span>
                                 <span style="color: #ffd700;">Reward: ???</span>
                             </div>
                         </div>
@@ -2228,6 +2360,12 @@
                 <div class="spinner"></div>
                 <p>Loading SKILLER...</p>
             </div>
+        {:else if !isVersionValid}
+             <!-- This block is technically redundant due to the overlay above but keeps flow consistent if we wanted to replace the main view -->
+             <div class="flex flex-col items-center justify-center min-h-[60vh]">
+                <div class="spinner mb-4"></div>
+                <p>Updating Client...</p>
+             </div>
         {:else if !account}
             <div class="welcome">
                 <h1>Welcome to SKILLER</h1>
@@ -2886,6 +3024,9 @@
     .toast.item-gold { background: #252525; border-left: 4px solid #ffd700; color: #ffd700; }
     .toast.item-wood-charm { background: #252525; border-left: 4px solid #4ade80; color: #4ade80; }
     .toast.item-mine-charm { background: #252525; border-left: 4px solid #b0bec5; color: #b0bec5; }
+    .toast.mining-xp, .toast.woodcutting-xp {
+        font-variant-numeric: tabular-nums;
+    }
     .toast-container {
         position: absolute;
         top: 1rem;

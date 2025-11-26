@@ -30,6 +30,9 @@ library LibGame {
         // Void Leaderboard (Top 100)
         LeaderboardEntry[100] voidLeaderboard;
         uint256 minLeaderboardLevel;
+
+        // Version Control
+        uint256 minGameVersion;
     }
 
     function gameStorage() internal pure returns (GameStorage storage gs) {

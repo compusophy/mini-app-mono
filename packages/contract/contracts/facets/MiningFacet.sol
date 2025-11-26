@@ -49,11 +49,15 @@ contract MiningFacet {
         return level;
     }
 
-    function mineIron(uint256 tokenId) external {
+    function mineIron(uint256 tokenId, uint256 version) external {
+        LibGame.GameStorage storage gs = LibGame.gameStorage();
+        require(version >= gs.minGameVersion, "Client Version Outdated - Please Refresh");
         _mine(tokenId, IRON_ORE);
     }
 
-    function mineCoal(uint256 tokenId) external {
+    function mineCoal(uint256 tokenId, uint256 version) external {
+        LibGame.GameStorage storage gs = LibGame.gameStorage();
+        require(version >= gs.minGameVersion, "Client Version Outdated - Please Refresh");
         _mine(tokenId, COAL_ORE);
     }
 
