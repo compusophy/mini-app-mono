@@ -16,33 +16,35 @@ contract WoodcuttingFacet {
 
     event Chopped(address indexed tba, uint256 logId, uint256 amount, uint256 xpGained);
 
-    // Square Root Helper
-    function sqrt(uint256 y) internal pure returns (uint256 z) {
-        if (y > 3) {
-            z = y;
-            uint256 x = y / 2 + 1;
-            while (x < z) {
-                z = x;
-                x = (y / x + x) / 2;
-            }
-        } else if (y != 0) {
-            z = 1;
+    // Helpers
+    function cbrt(uint256 n) internal pure returns (uint256) {
+        uint256 x = 0;
+        uint256 y = 0;
+        uint256 z = 0;
+        
+        if (n == 0) {
+            return 0;
         }
+        
+        x = n;
+        y = 1;
+        
+        while (x >= 2) {
+            x = x / 8; 
+            y = y * 2;
+        }
+        
+        z = y;
+        for (uint256 i = 0; i < 10; i++) {
+            z = (2 * z + n / (z * z)) / 3;
+        }
+        return z;
     }
 
     // Level Calculator
     function getLevel(uint256 xp) internal pure returns (uint256) {
-        uint256 LEVEL_100_XP = 980100; // 100 * (100-1)^2
-
-        if (xp <= LEVEL_100_XP) {
-            return sqrt(xp / 100) + 1;
-        }
-
-        // For levels > 100, the xp requirement gap is 100x larger.
-        // Normalized XP = 980100 + (xp - 980100) / 100
-        uint256 normalizedXp = LEVEL_100_XP + (xp - LEVEL_100_XP) / 100;
-        uint256 level = sqrt(normalizedXp / 100) + 1;
-
+        uint256 level = cbrt(xp / 20) + 1;
+        
         if (level > 200) {
             return 200;
         }

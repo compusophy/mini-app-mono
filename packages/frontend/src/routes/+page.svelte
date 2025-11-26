@@ -134,47 +134,24 @@
   function calculateProgress(currentXp: bigint): { percent: number, current: number, next: number, level: number } {
       const xp = Number(currentXp);
       
-      const LEVEL_100_XP = 980100;
-      let currentLevel = 1;
-      let currentLevelXp = 0;
-      let nextLevelXp = 100;
+      // Cubic Scaling: XP = 20 * (Level-1)^3
+      // Level = cbrt(xp / 20) + 1
+      
+      if (xp < 0) return { percent: 0, current: 0, next: 20, level: 1 }; // Level 2 at 20 XP
 
-      if (xp <= LEVEL_100_XP) {
-          // Safety check for 0 or negative
-          if (xp < 0) {
-              return { percent: 0, current: 0, next: 100, level: 1 };
-          }
-          currentLevel = Math.floor(Math.sqrt(xp / 100)) + 1;
-          currentLevelXp = 100 * Math.pow(currentLevel - 1, 2);
-          nextLevelXp = 100 * Math.pow(currentLevel, 2);
-      } else {
-          // New Curve for > 100
-          const normalizedXp = LEVEL_100_XP + (xp - LEVEL_100_XP) / 100;
-          currentLevel = Math.floor(Math.sqrt(normalizedXp / 100)) + 1;
-          
-          // Helper to get XP for a specific level
-          const getXpForLevel = (lvl: number) => {
-             if (lvl <= 100) {
-                 return 100 * Math.pow(lvl - 1, 2);
-             }
-             const normXp = 100 * Math.pow(lvl - 1, 2);
-             // Reverse normalization: XP = LEVEL_100_XP + (normXp - LEVEL_100_XP) * 100
-             return LEVEL_100_XP + (normXp - LEVEL_100_XP) * 100;
-          };
-
-          currentLevelXp = getXpForLevel(currentLevel);
-          nextLevelXp = getXpForLevel(currentLevel + 1);
-      }
+      let currentLevel = Math.floor(Math.cbrt(xp / 20)) + 1;
       
       if (currentLevel >= 200) {
           currentLevel = 200;
           return { percent: 100, current: xp, next: xp, level: 200 };
       }
 
+      const currentLevelXp = 20 * Math.pow(currentLevel - 1, 3);
+      const nextLevelXp = 20 * Math.pow(currentLevel, 3);
+
       const levelProgress = xp - currentLevelXp;
       const levelTotal = nextLevelXp - currentLevelXp;
       
-      // Avoid division by zero
       if (levelTotal <= 0) return { percent: 0, current: xp, next: nextLevelXp, level: currentLevel };
       
       return { percent: Math.min(100, Math.max(0, (levelProgress / levelTotal) * 100)), current: xp, next: nextLevelXp, level: currentLevel };

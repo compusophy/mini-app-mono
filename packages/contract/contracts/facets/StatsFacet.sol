@@ -5,32 +5,45 @@ import "../libraries/LibGame.sol";
 
 contract StatsFacet {
     
-    // Helper to get square root (from other facets)
-    function sqrt(uint256 y) internal pure returns (uint256 z) {
-        if (y > 3) {
-            z = y;
-            uint256 x = y / 2 + 1;
-            while (x < z) {
-                z = x;
-                x = (y / x + x) / 2;
-            }
-        } else if (y != 0) {
-            z = 1;
+    // Helper to get cube root
+    function cbrt(uint256 n) internal pure returns (uint256) {
+        uint256 x = 0;
+        uint256 y = 0;
+        uint256 z = 0;
+        
+        if (n == 0) {
+            return 0;
         }
+        
+        x = n;
+        y = 1;
+        
+        while (x >= 2) {
+            x = x / 8; // 2^3
+            y = y * 2;
+        }
+        
+        // y is roughly cbrt(n) but lower bound power of 2
+        // Newton-Raphson iteration
+        // x_{k+1} = (2*x_k + n/x_k^2) / 3
+        
+        // Initial guess
+        z = y;
+        
+        // 7 iterations is enough for uint256
+        for (uint256 i = 0; i < 10; i++) {
+            z = (2 * z + n / (z * z)) / 3;
+        }
+        
+        return z;
     }
 
     function getLevel(uint256 xp) internal pure returns (uint256) {
-        uint256 LEVEL_100_XP = 980100; // 100 * (100-1)^2
-
-        if (xp <= LEVEL_100_XP) {
-            return sqrt(xp / 100) + 1;
-        }
-
-        // For levels > 100, the xp requirement gap is 100x larger.
-        // Normalized XP = 980100 + (xp - 980100) / 100
-        uint256 normalizedXp = LEVEL_100_XP + (xp - LEVEL_100_XP) / 100;
-        uint256 level = sqrt(normalizedXp / 100) + 1;
-
+        // Cubic Scaling: Level = cbrt(xp / 20) + 1
+        // Max Level Cap: 200
+        
+        uint256 level = cbrt(xp / 20) + 1;
+        
         if (level > 200) {
             return 200;
         }
