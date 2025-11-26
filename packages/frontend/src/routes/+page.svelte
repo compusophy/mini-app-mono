@@ -217,9 +217,30 @@
             const res = await fetch(`/version.json?t=${new Date().getTime()}`);
             if (res.ok) {
                 const data = await res.json();
+                // Only force reload if Server is NEWER than Client
+                // Simple string comparison works for now (1.2.0 > 1.1.0)
+                // Ideally use semver compare
                 if (data.version !== APP_VERSION) {
-                    isVersionValid = false;
-                    console.warn(`Version mismatch! Client: ${APP_VERSION}, Server: ${data.version}`);
+                    // Check if server is actually newer
+                    const serverParts = data.version.split('.').map(Number);
+                    const clientParts = APP_VERSION.split('.').map(Number);
+                    
+                    let serverIsNewer = false;
+                    for (let i = 0; i < 3; i++) {
+                        if (serverParts[i] > clientParts[i]) {
+                            serverIsNewer = true;
+                            break;
+                        } else if (serverParts[i] < clientParts[i]) {
+                            break; // Client is newer (dev/preview), don't reload
+                        }
+                    }
+
+                    if (serverIsNewer) {
+                        isVersionValid = false;
+                        console.warn(`Version mismatch! Client: ${APP_VERSION}, Server: ${data.version} (Update Required)`);
+                    } else {
+                        console.log(`Client (${APP_VERSION}) is ahead or equal to Server (${data.version}). No reload.`);
+                    }
                 }
             }
         } catch (e) {
@@ -2338,10 +2359,16 @@
                 <p>Loading SKILLER...</p>
             </div>
         {:else if !isVersionValid}
-             <!-- This block is technically redundant due to the overlay above but keeps flow consistent if we wanted to replace the main view -->
-             <div class="flex flex-col items-center justify-center min-h-[60vh]">
-                <div class="spinner mb-4"></div>
-                <p>Updating Client...</p>
+             <div class="flex flex-col items-center justify-center min-h-[60vh] bg-stone-900">
+                <RefreshCw class="w-16 h-16 text-amber-500 mb-6 animate-spin" />
+                <h2 class="text-2xl font-bold text-amber-400 mb-4">Update Required</h2>
+                <p class="text-stone-300 mb-8 text-lg">A new version of Skiller is available.</p>
+                <button 
+                    class="bg-amber-600 hover:bg-amber-500 text-white font-bold py-3 px-8 rounded-lg transition-colors text-lg shadow-lg"
+                    on:click={() => window.location.reload()}
+                >
+                    Reload Now
+                </button>
              </div>
         {:else if !account}
             <div class="welcome">
