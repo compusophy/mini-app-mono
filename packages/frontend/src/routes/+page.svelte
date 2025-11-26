@@ -802,16 +802,17 @@
         
         if (action === 'chop') {
             const hasIronAxe = (selectedProfile?.ironAxeBalance || 0n) > 0n;
-            const hasCharm = (selectedProfile?.woodcuttingCharm);
+            const hasCharm = (selectedProfile?.woodcuttingCharm || 0n);
             const currentLevel = Number(selectedProfile?.woodcuttingLevel || 1n); // Get current level
             
             // Base * Level Multiplier
             let xpBase = hasIronAxe ? 100 : 10;
             let itemBase = hasIronAxe ? 10 : 1;
             
-            if (hasCharm) {
-                xpBase *= 2;
-                itemBase *= 2;
+            if (hasCharm > 0n) {
+                const multiplier = Number(hasCharm) + 1;
+                xpBase *= multiplier;
+                itemBase *= multiplier;
             }
 
             const xpAmount = xpBase * currentLevel;
@@ -835,16 +836,17 @@
             showToast(`+${itemAmount} Oak Log${itemAmount > 1 ? 's' : ''}`, 'item-log');
         } else if (action === 'mine') {
             const hasIronPickaxe = (selectedProfile?.ironPickaxeBalance || 0n) > 0n;
-            const hasCharm = (selectedProfile?.miningCharm);
+            const hasCharm = (selectedProfile?.miningCharm || 0n);
             const currentLevel = Number(selectedProfile?.miningLevel || 1n); // Get current level
 
             // Base * Level Multiplier
             let xpBase = hasIronPickaxe ? 100 : 10;
             let itemBase = hasIronPickaxe ? 10 : 1;
             
-            if (hasCharm) {
-                xpBase *= 2;
-                itemBase *= 2;
+            if (hasCharm > 0n) {
+                const multiplier = Number(hasCharm) + 1;
+                xpBase *= multiplier;
+                itemBase *= multiplier;
             }
 
             const xpAmount = xpBase * currentLevel;
