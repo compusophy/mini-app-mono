@@ -29,6 +29,8 @@
     version: 'v1' | 'v2';
     ironAxeBalance?: bigint;
     ironPickaxeBalance?: bigint;
+    steelAxeBalance?: bigint;
+    steelPickaxeBalance?: bigint;
     ironOreBalance?: bigint;
     coalOreBalance?: bigint;
     mapleLogBalance?: bigint;
@@ -450,6 +452,8 @@
     
     let ironAxeBalance = 0n;
     let ironPickaxeBalance = 0n;
+    let steelAxeBalance = 0n;
+    let steelPickaxeBalance = 0n;
     let ironOreBalance = 0n;
     let coalOreBalance = 0n;
     let mapleLogBalance = 0n;
@@ -492,6 +496,8 @@
                 promises.push(publicClient.readContract({ address: itemsAddress as Address, abi: itemsAbi, functionName: 'balanceOf', args: [tbaAddress, 401n] })); // Mining Charm
                 promises.push(publicClient.readContract({ address: itemsAddress as Address, abi: itemsAbi, functionName: 'balanceOf', args: [tbaAddress, 402n] })); // Woodcutting Charm
                 promises.push(publicClient.readContract({ address: itemsAddress as Address, abi: itemsAbi, functionName: 'balanceOf', args: [tbaAddress, 403n] })); // Gold Charm
+                promises.push(publicClient.readContract({ address: itemsAddress as Address, abi: itemsAbi, functionName: 'balanceOf', args: [tbaAddress, 103n] })); // Steel Axe
+                promises.push(publicClient.readContract({ address: itemsAddress as Address, abi: itemsAbi, functionName: 'balanceOf', args: [tbaAddress, 153n] })); // Steel Pickaxe
             } else {
                  if (CONTRACT_ADDRESSES.SkillerGold) {
                      // Simplified V1 Gold handling
@@ -514,6 +520,8 @@
                 miningCharm = results[10] as bigint;
                 woodcuttingCharm = results[11] as bigint;
                 goldCharm = results[12] as bigint;
+                steelAxeBalance = results[13] as bigint;
+                steelPickaxeBalance = results[14] as bigint;
             }
         }
 
@@ -637,7 +645,9 @@
         miningCharm,
         woodcuttingCharm,
         goldCharm,
-        voidLevel
+        voidLevel,
+        steelAxeBalance,
+        steelPickaxeBalance
     };
   }
 
@@ -1087,14 +1097,22 @@
                 const level = Number(updatedProfile.woodcuttingLevel || 1n);
                 const charm = Number(updatedProfile.woodcuttingCharm || 0n);
                 const hasIron = (updatedProfile.ironAxeBalance || 0n) > 0n;
+                const hasSteel = (updatedProfile.steelAxeBalance || 0n) > 0n;
                 
-                let baseXp = hasIron ? 100 : 10;
-                let baseAmt = hasIron ? 10 : 1;
+                let baseXp = 10;
+                let baseAmt = 1;
+                
+                if (hasSteel) {
+                    baseXp = 1000;
+                    baseAmt = 100;
+                } else if (hasIron) {
+                    baseXp = 100;
+                    baseAmt = 10;
+                }
                 
                 if (charm > 0) {
-                    const multiplier = charm + 1;
-                    baseXp *= multiplier;
-                    baseAmt *= multiplier;
+                    baseXp *= 2;
+                    baseAmt *= 2;
                 }
                 
                 xpGained = BigInt(baseXp * level);
@@ -1113,14 +1131,19 @@
             else if (action === 'chopMaple') {
                 const level = Number(updatedProfile.woodcuttingLevel || 1n);
                 const charm = Number(updatedProfile.woodcuttingCharm || 0n);
+                const hasSteel = (updatedProfile.steelAxeBalance || 0n) > 0n;
                 
                 let baseXp = 50;
                 let baseAmt = 1;
                 
+                if (hasSteel) {
+                    baseXp = 500;
+                    baseAmt = 10;
+                }
+                
                 if (charm > 0) {
-                    const multiplier = charm + 1;
-                    baseXp *= multiplier;
-                    baseAmt *= multiplier;
+                    baseXp *= 2;
+                    baseAmt *= 2;
                 }
                 
                 xpGained = BigInt(baseXp * level);
@@ -1131,7 +1154,7 @@
                 
                 updatedProfile.woodcuttingXp = (updatedProfile.woodcuttingXp || 0n) + xpGained;
                 updatedProfile.mapleLogBalance = (updatedProfile.mapleLogBalance || 0n) + itemGained;
-                updatedProfile.ironAxeBalance = (updatedProfile.ironAxeBalance || 0n) - 100n; // Consumes 100 Axes
+                updatedProfile.ironAxeBalance = (updatedProfile.ironAxeBalance || 0n) - 100n; 
                 
                 const prog = calculateProgress(updatedProfile.woodcuttingXp);
                 updatedProfile.woodcuttingLevel = BigInt(prog.level);
@@ -1141,14 +1164,22 @@
                 const level = Number(updatedProfile.miningLevel || 1n);
                 const charm = Number(updatedProfile.miningCharm || 0n);
                 const hasIron = (updatedProfile.ironPickaxeBalance || 0n) > 0n;
+                const hasSteel = (updatedProfile.steelPickaxeBalance || 0n) > 0n;
                 
-                let baseXp = hasIron ? 100 : 10;
-                let baseAmt = hasIron ? 10 : 1;
+                let baseXp = 10;
+                let baseAmt = 1;
+
+                if (hasSteel) {
+                    baseXp = 1000;
+                    baseAmt = 100;
+                } else if (hasIron) {
+                    baseXp = 100;
+                    baseAmt = 10;
+                }
                 
                 if (charm > 0) {
-                    const multiplier = charm + 1;
-                    baseXp *= multiplier;
-                    baseAmt *= multiplier;
+                    baseXp *= 2;
+                    baseAmt *= 2;
                 }
                 
                 xpGained = BigInt(baseXp * level);
@@ -1168,14 +1199,19 @@
             else if (action === 'mineCoal') {
                 const level = Number(updatedProfile.miningLevel || 1n);
                 const charm = Number(updatedProfile.miningCharm || 0n);
+                const hasSteel = (updatedProfile.steelPickaxeBalance || 0n) > 0n;
                 
                 let baseXp = 25;
                 let baseAmt = 1;
+
+                if (hasSteel) {
+                    baseXp = 250;
+                    baseAmt = 10;
+                }
                 
                 if (charm > 0) {
-                    const multiplier = charm + 1;
-                    baseXp *= multiplier;
-                    baseAmt *= multiplier;
+                    baseXp *= 2;
+                    baseAmt *= 2;
                 }
                 
                 xpGained = BigInt(baseXp * level);
@@ -1186,7 +1222,7 @@
                 
                 updatedProfile.miningXp = (updatedProfile.miningXp || 0n) + xpGained;
                 updatedProfile.coalOreBalance = (updatedProfile.coalOreBalance || 0n) + itemGained;
-                updatedProfile.ironPickaxeBalance = (updatedProfile.ironPickaxeBalance || 0n) - 100n; // Consumes 100 Pickaxes
+                updatedProfile.ironPickaxeBalance = (updatedProfile.ironPickaxeBalance || 0n) - 100n; 
                 
                 const prog = calculateProgress(updatedProfile.miningXp);
                 updatedProfile.miningLevel = BigInt(prog.level);
@@ -1586,7 +1622,7 @@
       }
   }
 
-  async function handleCraft(item: 'iron-axe' | 'iron-pickaxe') {
+  async function handleCraft(item: 'iron-axe' | 'iron-pickaxe' | 'steel-axe' | 'steel-pickaxe') {
       if (!account || actionLoading || !selectedProfile) return;
       actionLoading = 'craft';
       
@@ -1595,14 +1631,22 @@
         const publicClient = getPublicClient(config);
         const address = CONTRACT_ADDRESSES.Diamond as Address;
         const abi = ABIS.GameDiamond;
-        const functionName = item === 'iron-axe' ? 'craftIronAxe' : 'craftIronPickaxe';
         
+        let functionName = '';
+        if (item === 'iron-axe') functionName = 'craftIronAxe';
+        else if (item === 'iron-pickaxe') functionName = 'craftIronPickaxe';
+        else if (item === 'steel-axe') functionName = 'craftSteelAxe';
+        else if (item === 'steel-pickaxe') functionName = 'craftSteelPickaxe';
+        
+        // Convert version to BigInt
+        const versionInt = BigInt(APP_VERSION.split('.').join(''));
+
         const { request } = await publicClient.simulateContract({
             account,
             address,
             abi,
             functionName,
-            args: [selectedProfile.id]
+            args: [selectedProfile.id, versionInt]
         });
         
         const hash = await walletClient.writeContract(request);
@@ -1611,20 +1655,33 @@
         dismissToast(loadingToastId);
         
         // Optimistic Update
-        const costLogs = 100n;
-        const costOre = 100n;
-        const level = Number(selectedProfile.craftingLevel || 1n);
-        const xpGained = BigInt(10 * level);
-        
         const updatedProfile = { ...selectedProfile };
-        // Deduct materials
-        updatedProfile.woodBalance = (updatedProfile.woodBalance || 0n) - costLogs;
-        // Update both ore balances to be safe since they are aliases in V2 context usually
-        const newOreBal = (updatedProfile.ironOreBalance || 0n) - costOre;
-        updatedProfile.ironOreBalance = newOreBal;
-        updatedProfile.oreBalance = newOreBal; 
+        let xpGained = 0n;
+        let yieldAmount = 0n;
+        let itemName = '';
+
+        if (item.includes('steel')) {
+             // Steel Logic (Fixed)
+             const costCoal = 100n;
+             const costMaple = 100n;
+             xpGained = 50n;
+             yieldAmount = 1n;
+
+             updatedProfile.coalOreBalance = (updatedProfile.coalOreBalance || 0n) - costCoal;
+             updatedProfile.mapleLogBalance = (updatedProfile.mapleLogBalance || 0n) - costMaple;
+        } else {
+             // Iron Logic (Scaled)
+             const costLogs = 100n;
+             const costOre = 100n;
+             const level = Number(selectedProfile.craftingLevel || 1n);
+             xpGained = BigInt(10 * level);
+             yieldAmount = BigInt(level);
+
+             updatedProfile.woodBalance = (updatedProfile.woodBalance || 0n) - costLogs;
+             updatedProfile.ironOreBalance = (updatedProfile.ironOreBalance || 0n) - costOre;
+             updatedProfile.oreBalance = updatedProfile.ironOreBalance; 
+        }
         
-        // Add XP
         updatedProfile.craftingXp = (updatedProfile.craftingXp || 0n) + xpGained;
         
         // Recalculate Level
@@ -1633,11 +1690,18 @@
         updatedProfile.craftingLevel = BigInt(newProgress.level);
         
         // Add Item
-        const yieldAmount = BigInt(level);
         if (item === 'iron-axe') {
              updatedProfile.ironAxeBalance = (updatedProfile.ironAxeBalance || 0n) + yieldAmount;
+             itemName = 'Iron Axe';
         } else if (item === 'iron-pickaxe') {
              updatedProfile.ironPickaxeBalance = (updatedProfile.ironPickaxeBalance || 0n) + yieldAmount;
+             itemName = 'Iron Pickaxe';
+        } else if (item === 'steel-axe') {
+             updatedProfile.steelAxeBalance = (updatedProfile.steelAxeBalance || 0n) + yieldAmount;
+             itemName = 'Steel Axe';
+        } else if (item === 'steel-pickaxe') {
+             updatedProfile.steelPickaxeBalance = (updatedProfile.steelPickaxeBalance || 0n) + yieldAmount;
+             itemName = 'Steel Pickaxe';
         }
         
         // Apply Update to UI
@@ -1645,22 +1709,14 @@
         profiles = profiles.map(p => p.id === selectedProfile.id ? selectedProfile : p);
 
         // Show Toasts
-        showToast(`+${Number(xpGained).toLocaleString()} Crafting XP`, 'woodcutting-xp'); // Reusing purple style
-        
-        if (item === 'iron-axe') {
-            showToast(`+${yieldAmount} Iron Axe`, 'item-received');
-        } else if (item === 'iron-pickaxe') {
-            showToast(`+${yieldAmount} Iron Pickaxe`, 'item-received');
-        }
+        showToast(`+${Number(xpGained).toLocaleString()} Crafting XP`, 'woodcutting-xp');
+        showToast(`+${yieldAmount} ${itemName}`, 'item-received');
         
         if (updatedProfile.craftingLevel > oldLevel) {
             showToast(`Level Up! Crafting ${updatedProfile.craftingLevel}`, 'level-up');
         }
 
         showCrafting = false;
-        
-        // Background Refresh to ensure sync - Skipped to prevent reverting
-        // loadProfiles(true);
       } catch (e: any) {
           console.error("Crafting failed:", e);
           showToast(getErrorMessage(e), 'error');
@@ -2189,6 +2245,8 @@
                                 {:else if selectedItem.name.includes('Iron Axe')} <Axe size={48} color="#b0bec5"/>
                                 {:else if selectedItem.name.includes('Axe')} <Axe size={48} color="#cd7f32"/>
                                 {:else if selectedItem.name.includes('Iron Pickaxe')} <Pickaxe size={48} color="#b0bec5"/>
+                                {:else if selectedItem.name.includes('Steel Axe')} <Axe size={48} color="#9e9e9e"/>
+                                {:else if selectedItem.name.includes('Steel Pickaxe')} <Pickaxe size={48} color="#9e9e9e"/>
                                 {:else if selectedItem.name.includes('Pickaxe')} <Pickaxe size={48} color="#cd7f32"/>
                                 {:else if selectedItem.name.includes('Tree Charm')} 
                                     <div style="position: relative; width: 48px; height: 48px; display: flex; align-items: center; justify-content: center; margin: 0 auto;">
@@ -2276,6 +2334,18 @@
                              <div class="inventory-item" title="Iron Pickaxe" on:click={() => selectedItem = { id: 152n, name: 'Iron Pickaxe', balance: selectedProfile?.ironPickaxeBalance || 0n }}>
                                 <div class="item-icon"><Pickaxe size={24} color="#b0bec5"/></div>
                                 <div class="item-count">{selectedProfile.ironPickaxeBalance}</div>
+                            </div>
+                        {/if}
+                        {#if (selectedProfile.steelAxeBalance || 0n) > 0n}
+                            <div class="inventory-item" title="Steel Axe" on:click={() => selectedItem = { id: 103n, name: 'Steel Axe', balance: selectedProfile?.steelAxeBalance || 0n }}>
+                                <div class="item-icon"><Axe size={24} color="#9e9e9e"/></div>
+                                <div class="item-count">{selectedProfile.steelAxeBalance}</div>
+                            </div>
+                        {/if}
+                        {#if (selectedProfile.steelPickaxeBalance || 0n) > 0n}
+                             <div class="inventory-item" title="Steel Pickaxe" on:click={() => selectedItem = { id: 153n, name: 'Steel Pickaxe', balance: selectedProfile?.steelPickaxeBalance || 0n }}>
+                                <div class="item-icon"><Pickaxe size={24} color="#9e9e9e"/></div>
+                                <div class="item-count">{selectedProfile.steelPickaxeBalance}</div>
                             </div>
                         {/if}
 
@@ -2943,6 +3013,24 @@
                                             <div class="cost"><span>Consume 100 Iron Ore</span><span>Consume 100 Oak Logs</span></div>
                                         </div>
                                         <button class="craft-btn" on:click={() => handleCraft('iron-pickaxe')} disabled={!!actionLoading}>Craft</button>
+                                    </div>
+                                    <!-- Steel Axe -->
+                                    <div class="recipe-card">
+                                        <div class="recipe-icon"><Axe size={24} color="#9e9e9e"/></div>
+                                        <div class="recipe-info">
+                                            <h4>Steel Axe</h4>
+                                            <div class="cost"><span>Consume 100 Coal</span><span>Consume 100 Maple Logs</span></div>
+                                        </div>
+                                        <button class="craft-btn" on:click={() => handleCraft('steel-axe')} disabled={!!actionLoading || (selectedProfile.coalOreBalance || 0n) < 100n || (selectedProfile.mapleLogBalance || 0n) < 100n}>Craft</button>
+                                    </div>
+                                     <!-- Steel Pickaxe -->
+                                    <div class="recipe-card">
+                                        <div class="recipe-icon"><Pickaxe size={24} color="#9e9e9e"/></div>
+                                        <div class="recipe-info">
+                                            <h4>Steel Pickaxe</h4>
+                                            <div class="cost"><span>Consume 100 Coal</span><span>Consume 100 Maple Logs</span></div>
+                                        </div>
+                                        <button class="craft-btn" on:click={() => handleCraft('steel-pickaxe')} disabled={!!actionLoading || (selectedProfile.coalOreBalance || 0n) < 100n || (selectedProfile.mapleLogBalance || 0n) < 100n}>Craft</button>
                                     </div>
                                 </div>
                             {/if}

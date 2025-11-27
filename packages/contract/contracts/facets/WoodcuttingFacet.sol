@@ -8,6 +8,7 @@ contract WoodcuttingFacet {
     // Item IDs
     uint256 constant BRONZE_AXE = 101;
     uint256 constant IRON_AXE = 102;
+    uint256 constant STEEL_AXE = 103;
     
     uint256 constant OAK_LOG = 201;
     uint256 constant WILLOW_LOG = 202;
@@ -79,14 +80,14 @@ contract WoodcuttingFacet {
         // Check Tools
         uint256 bronzeAxe = gs.items.balanceOf(tba, BRONZE_AXE);
         uint256 ironAxe = gs.items.balanceOf(tba, IRON_AXE);
+        uint256 steelAxe = gs.items.balanceOf(tba, STEEL_AXE);
         uint256 hasCharm = gs.items.balanceOf(tba, WOODCUTTING_CHARM);
-        require(bronzeAxe > 0 || ironAxe > 0, "No axe equipped");
+        require(bronzeAxe > 0 || ironAxe > 0 || steelAxe > 0, "No axe equipped");
 
         if (logId == WILLOW_LOG) {
-            require(ironAxe > 0, "Iron Axe required for Willow");
+            require(ironAxe > 0 || steelAxe > 0, "Iron Axe required for Willow");
         } else if (logId == MAPLE_LOG) {
-            require(ironAxe > 0, "Iron Axe required for Maple");
-            // Could require Steel Axe if we had it, but Iron is top tier for now
+            require(ironAxe > 0 || steelAxe > 0, "Iron Axe required for Maple");
         }
 
         // CALCULATE LEVEL
@@ -103,22 +104,27 @@ contract WoodcuttingFacet {
 
         // XP & Yield Logic
         if (logId == OAK_LOG) {
-            if (ironAxe > 0) {
+            if (steelAxe > 0) {
+                amount = 100;
+                xp = 1000;
+            } else if (ironAxe > 0) {
                 amount = 10;
-                xp = 100; // 10 * 10xp
+                xp = 100; 
             }
         } else if (logId == WILLOW_LOG) {
-            xp = 25; // Base for Willow
-            // if (ironAxe > 0) { ... }
+            xp = 25; 
         } else if (logId == MAPLE_LOG) {
-            xp = 50; // Base for Maple
+            xp = 50;
+            if (steelAxe > 0) {
+                amount = 10;
+                xp = 500;
+            }
         }
 
-        // APPLY CHARM MULTIPLIER
-        // Stacking Multiplier: Base * (1 + charmCount)
+        // APPLY CHARM MULTIPLIER (Fixed 2x)
         if (hasCharm > 0) {
-            amount = amount * (1 + hasCharm);
-            xp = xp * (1 + hasCharm);
+            amount = amount * 2;
+            xp = xp * 2;
         }
 
         // APPLY LEVEL MULTIPLIER

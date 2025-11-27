@@ -8,6 +8,7 @@ contract MiningFacet {
     // Item IDs
     uint256 constant BRONZE_PICKAXE = 151;
     uint256 constant IRON_PICKAXE = 152;
+    uint256 constant STEEL_PICKAXE = 153;
     
     uint256 constant IRON_ORE = 301; // Was Copper/Iron
     uint256 constant COAL_ORE = 302; 
@@ -72,11 +73,12 @@ contract MiningFacet {
         // Check Tools
         uint256 bronzePick = gs.items.balanceOf(tba, BRONZE_PICKAXE);
         uint256 ironPick = gs.items.balanceOf(tba, IRON_PICKAXE);
+        uint256 steelPick = gs.items.balanceOf(tba, STEEL_PICKAXE);
         uint256 hasCharm = gs.items.balanceOf(tba, MINING_CHARM);
-        require(bronzePick > 0 || ironPick > 0, "No pickaxe equipped");
+        require(bronzePick > 0 || ironPick > 0 || steelPick > 0, "No pickaxe equipped");
 
         if (oreId == COAL_ORE) {
-            require(ironPick > 0, "Iron Pickaxe required for Coal");
+            require(ironPick > 0 || steelPick > 0, "Iron Pickaxe required for Coal");
         }
 
         // CALCULATE LEVEL
@@ -92,19 +94,25 @@ contract MiningFacet {
         uint256 xp = 10; // Base XP
 
         if (oreId == IRON_ORE) {
-            if (ironPick > 0) {
+            if (steelPick > 0) {
+                amount = 100;
+                xp = 1000;
+            } else if (ironPick > 0) {
                 amount = 10;
                 xp = 100;
             }
         } else if (oreId == COAL_ORE) {
             xp = 25;
+            if (steelPick > 0) {
+                amount = 10;
+                xp = 250;
+            }
         }
 
-        // APPLY CHARM MULTIPLIER
-        // Stacking Multiplier: Base * (1 + charmCount)
+        // APPLY CHARM MULTIPLIER (Fixed 2x)
         if (hasCharm > 0) {
-            amount = amount * (1 + hasCharm);
-            xp = xp * (1 + hasCharm);
+            amount = amount * 2;
+            xp = xp * 2;
         }
 
         // APPLY MULTIPLIER

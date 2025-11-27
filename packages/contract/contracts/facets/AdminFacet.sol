@@ -40,4 +40,10 @@ contract AdminFacet {
         gs.xp[tokenId][1] = miningXp; // Skill 1: Mining
         gs.xp[tokenId][2] = woodcuttingXp; // Skill 2: Woodcutting
     }
+
+    function setMinGameVersion(uint256 _version) external {
+        LibDiamond.enforceIsContractOwner();
+        LibGame.GameStorage storage gs = LibGame.gameStorage();
+        gs.minGameVersion = _version;
+    }
 }

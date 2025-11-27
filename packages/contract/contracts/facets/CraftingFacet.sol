@@ -7,6 +7,7 @@ import "../libraries/LibDiamond.sol";
 contract CraftingFacet {
     // Resources
     uint256 constant OAK_LOG = 201;
+    uint256 constant MAPLE_LOG = 203;
     uint256 constant IRON_ORE = 301;
     uint256 constant COAL_ORE = 302;
     
@@ -16,7 +17,9 @@ contract CraftingFacet {
 
     // Tools
     uint256 constant IRON_AXE = 102;
+    uint256 constant STEEL_AXE = 103;
     uint256 constant IRON_PICKAXE = 152;
+    uint256 constant STEEL_PICKAXE = 153;
 
     uint256 constant SKILL_CRAFTING = 3;
 
@@ -54,12 +57,16 @@ contract CraftingFacet {
     }
 
     // Smelt Iron Ore -> Iron Bar (1:1)
-    function smeltIron(uint256 tokenId, uint256 amount) external {
+    function smeltIron(uint256 tokenId, uint256 amount, uint256 version) external {
+        LibGame.GameStorage storage gs = LibGame.gameStorage();
+        require(version >= gs.minGameVersion, "Client Version Outdated - Please Refresh");
         _craft(tokenId, IRON_BAR, amount);
     }
 
     // Smelt Iron Ore + Coal -> Steel Bar (1 Iron + 2 Coal -> 1 Steel)
-    function smeltSteel(uint256 tokenId, uint256 amount) external {
+    function smeltSteel(uint256 tokenId, uint256 amount, uint256 version) external {
+        LibGame.GameStorage storage gs = LibGame.gameStorage();
+        require(version >= gs.minGameVersion, "Client Version Outdated - Please Refresh");
         _craft(tokenId, STEEL_BAR, amount);
     }
 
@@ -72,12 +79,52 @@ contract CraftingFacet {
     // This implies a Smithing step. 
     // Let's implement: 100 Iron Ore + 100 Oak Logs -> Iron Axe (Direct, matching first request)
     // AND allow smelting for future steel items.
-    function craftIronAxe(uint256 tokenId) external {
+    function craftIronAxe(uint256 tokenId, uint256 version) external {
+        LibGame.GameStorage storage gs = LibGame.gameStorage();
+        require(version >= gs.minGameVersion, "Client Version Outdated - Please Refresh");
         _craftTool(tokenId, IRON_AXE);
     }
 
-    function craftIronPickaxe(uint256 tokenId) external {
+    function craftIronPickaxe(uint256 tokenId, uint256 version) external {
+        LibGame.GameStorage storage gs = LibGame.gameStorage();
+        require(version >= gs.minGameVersion, "Client Version Outdated - Please Refresh");
         _craftTool(tokenId, IRON_PICKAXE);
+    }
+
+    function craftSteelAxe(uint256 tokenId, uint256 version) external {
+        LibGame.GameStorage storage gs = LibGame.gameStorage();
+        require(version >= gs.minGameVersion, "Client Version Outdated - Please Refresh");
+        _craftSteelTool(tokenId, STEEL_AXE);
+    }
+
+    function craftSteelPickaxe(uint256 tokenId, uint256 version) external {
+        LibGame.GameStorage storage gs = LibGame.gameStorage();
+        require(version >= gs.minGameVersion, "Client Version Outdated - Please Refresh");
+        _craftSteelTool(tokenId, STEEL_PICKAXE);
+    }
+
+    function _craftSteelTool(uint256 tokenId, uint256 resultItem) internal {
+        LibGame.GameStorage storage gs = LibGame.gameStorage();
+        require(gs.profile.ownerOf(tokenId) == msg.sender, "Not profile owner");
+        address tba = LibGame.getTBA(tokenId);
+
+        // Recipe: 100 Coal + 100 Maple
+        uint256 coalCost = 100;
+        uint256 mapleCost = 100;
+
+        require(gs.items.balanceOf(tba, COAL_ORE) >= coalCost, "Not enough Coal");
+        require(gs.items.balanceOf(tba, MAPLE_LOG) >= mapleCost, "Not enough Maple Logs");
+
+        gs.items.burn(tba, COAL_ORE, coalCost);
+        gs.items.burn(tba, MAPLE_LOG, mapleCost);
+
+        // Fixed 1 Yield, Fixed 50 XP
+        uint256 amount = 1;
+        uint256 xp = 50;
+
+        gs.xp[tokenId][SKILL_CRAFTING] += xp;
+        gs.items.mint(tba, resultItem, amount, "");
+        emit Crafted(tba, resultItem, amount, xp);
     }
 
     function _craftTool(uint256 tokenId, uint256 resultItem) internal {
