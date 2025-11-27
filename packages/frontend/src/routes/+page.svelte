@@ -2861,7 +2861,7 @@
                         <div class="skill-content">
                             {#if activeSkillTab === 'woodcutting'}
                                 <div class="skill-header">
-                                    <div class="skill-icon-large"><TreeDeciduous size={48} color="#4ade80" /></div>
+                                    <div class="skill-icon-large"><TreeDeciduous size={48} /></div>
                                     <h3>
                                         Woodcutting
                                         <span class="level-text">Level {selectedProfile.woodcuttingLevel}</span>
@@ -2919,7 +2919,7 @@
 
                             {:else if activeSkillTab === 'mining'}
                                 <div class="skill-header">
-                                    <div class="skill-icon-large"><Mountain size={48} color="#b0bec5" /></div>
+                                    <div class="skill-icon-large"><Mountain size={48} /></div>
                                     <h3>
                                         Mining
                                         <span class="level-text">Level {selectedProfile.miningLevel}</span>
@@ -2983,7 +2983,7 @@
 
                             {:else if activeSkillTab === 'crafting'}
                                 <div class="skill-header">
-                                    <div class="skill-icon-large"><Hammer size={48} color="#2563eb" /></div>
+                                    <div class="skill-icon-large"><Hammer size={48} /></div>
                                     <h3>
                                         Crafting
                                         <span class="level-text">Level {selectedProfile.craftingLevel}</span>
@@ -3645,7 +3645,7 @@
     .profiles-list { display: flex; flex-direction: column; gap: 0.75rem; width: 100%; max-width: 300px; }
     .mint-btn { background: #1e1e1e; color: white; border: 1px solid #333; border-radius: 12px; font-weight: 600; font-size: 1rem; cursor: pointer; width: 100%; height: 56px; display: flex; justify-content: center; align-items: center; }
     .profile-card-btn { background: #1e1e1e; border: 1px solid #333; border-radius: 12px; padding: 0.75rem 1rem; cursor: pointer; color: white; width: 100%; height: 56px; display: flex; align-items: center; justify-content: center; }
-    .gameplay-screen { display: flex; flex-direction: column; gap: 1.5rem; padding-top: 1rem; flex: 1; justify-content: center; align-items: center; }
+    .gameplay-screen { display: flex; flex-direction: column; gap: 1.5rem; padding-top: 1rem; flex: 1; justify-content: flex-start; align-items: center; }
     .actions-container { display: flex; flex-direction: column; gap: 1rem; width: 100%; max-width: 280px; }
     .action-btn { width: 100%; padding: 0 1rem; border: none; border-radius: 12px; font-weight: bold; font-size: 1rem; cursor: pointer; height: 56px; display: flex; justify-content: center; align-items: center; gap: 0.75rem; }
     .action-btn.wood { background: #2e7d32; color: white; }
