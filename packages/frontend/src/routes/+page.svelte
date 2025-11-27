@@ -2238,16 +2238,16 @@
                                         <Gem size={48} color="#ffd700"/>
                                     </div>
                                 {:else if selectedItem.name.includes('Maple Log')} <TreeDeciduous size={48} color="#d32f2f" fill="#d32f2f"/>
-                                {:else if selectedItem.name.includes('Log')} <TreeDeciduous size={48} color="#4ade80"/>
-                                {:else if selectedItem.name.includes('Iron Ore')} <Mountain size={48} color="#b0bec5"/>
+                                {:else if selectedItem.name.includes('Oak Log') || selectedItem.name === 'Oak Logs'} <TreeDeciduous size={48} color="#4ade80" fill="#4ade80"/>
+                                {:else if selectedItem.name.includes('Iron Ore')} <Mountain size={48} color="#b0bec5" fill="#b0bec5"/>
                                 {:else if selectedItem.name.includes('Coal')} <Mountain size={48} color="#111" fill="#111"/>
-                                {:else if selectedItem.name.includes('Ore')} <Mountain size={48} color="#b0bec5"/>
+                                {:else if selectedItem.name.includes('Ore')} <Mountain size={48} color="#b0bec5" fill="#b0bec5"/>
                                 {:else if selectedItem.name.includes('Iron Axe')} <Axe size={48} color="#b0bec5"/>
-                                {:else if selectedItem.name.includes('Axe')} <Axe size={48} color="#cd7f32"/>
+                                {:else if selectedItem.name.includes('Bronze Axe')} <Axe size={48} color="#cd7f32"/>
                                 {:else if selectedItem.name.includes('Iron Pickaxe')} <Pickaxe size={48} color="#b0bec5"/>
-                                {:else if selectedItem.name.includes('Steel Axe')} <Axe size={48} color="#9e9e9e"/>
-                                {:else if selectedItem.name.includes('Steel Pickaxe')} <Pickaxe size={48} color="#9e9e9e"/>
-                                {:else if selectedItem.name.includes('Pickaxe')} <Pickaxe size={48} color="#cd7f32"/>
+                                {:else if selectedItem.name.includes('Steel Axe')} <Axe size={48} color="#9e9e9e" fill="#9e9e9e"/>
+                                {:else if selectedItem.name.includes('Steel Pickaxe')} <Pickaxe size={48} color="#9e9e9e" fill="#9e9e9e"/>
+                                {:else if selectedItem.name.includes('Bronze Pickaxe')} <Pickaxe size={48} color="#cd7f32"/>
                                 {:else if selectedItem.name.includes('Tree Charm')} 
                                     <div style="position: relative; width: 48px; height: 48px; display: flex; align-items: center; justify-content: center; margin: 0 auto;">
                                         <Gem size={48} color="#4ade80"/>
@@ -2876,7 +2876,7 @@
                                 <div class="actions-grid">
                                     <!-- Oak -->
                                     <div class="recipe-card">
-                                        <div class="recipe-icon"><TreeDeciduous size={24} color="#4ade80"/></div>
+                                        <div class="recipe-icon"><TreeDeciduous size={24} color="#4ade80" fill="#4ade80"/></div>
                                         <div class="recipe-info">
                                             <h4>Oak</h4>
                                             <div class="cost"></div>
@@ -2934,7 +2934,7 @@
                                 <div class="actions-grid">
                                     <!-- Iron -->
                                     <div class="recipe-card">
-                                        <div class="recipe-icon"><Mountain size={24} color="#b0bec5"/></div>
+                                        <div class="recipe-icon"><Mountain size={24} color="#b0bec5" fill="#b0bec5"/></div>
                                         <div class="recipe-info">
                                             <h4>Iron</h4>
                                             <div class="cost"></div>
