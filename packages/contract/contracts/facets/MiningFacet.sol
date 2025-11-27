@@ -84,8 +84,8 @@ contract MiningFacet {
         uint256 level = getLevel(currentXp);
 
         if (oreId == COAL_ORE) {
-            require(ironPick >= 1, "Not enough Iron Pickaxes");
-            gs.items.burn(tba, IRON_PICKAXE, 1);
+            require(ironPick >= 100, "Not enough Iron Pickaxes");
+            gs.items.burn(tba, IRON_PICKAXE, 100);
         }
 
         uint256 amount = 1;

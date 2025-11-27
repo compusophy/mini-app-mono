@@ -1131,7 +1131,7 @@
                 
                 updatedProfile.woodcuttingXp = (updatedProfile.woodcuttingXp || 0n) + xpGained;
                 updatedProfile.mapleLogBalance = (updatedProfile.mapleLogBalance || 0n) + itemGained;
-                updatedProfile.ironAxeBalance = (updatedProfile.ironAxeBalance || 0n) - 1n; // Consumes Axe
+                updatedProfile.ironAxeBalance = (updatedProfile.ironAxeBalance || 0n) - 100n; // Consumes 100 Axes
                 
                 const prog = calculateProgress(updatedProfile.woodcuttingXp);
                 updatedProfile.woodcuttingLevel = BigInt(prog.level);
@@ -1186,7 +1186,7 @@
                 
                 updatedProfile.miningXp = (updatedProfile.miningXp || 0n) + xpGained;
                 updatedProfile.coalOreBalance = (updatedProfile.coalOreBalance || 0n) + itemGained;
-                updatedProfile.ironPickaxeBalance = (updatedProfile.ironPickaxeBalance || 0n) - 1n; // Consumes Pickaxe
+                updatedProfile.ironPickaxeBalance = (updatedProfile.ironPickaxeBalance || 0n) - 100n; // Consumes 100 Pickaxes
                 
                 const prog = calculateProgress(updatedProfile.miningXp);
                 updatedProfile.miningLevel = BigInt(prog.level);
@@ -1633,10 +1633,11 @@
         updatedProfile.craftingLevel = BigInt(newProgress.level);
         
         // Add Item
+        const yieldAmount = BigInt(level);
         if (item === 'iron-axe') {
-             updatedProfile.ironAxeBalance = (updatedProfile.ironAxeBalance || 0n) + 1n;
+             updatedProfile.ironAxeBalance = (updatedProfile.ironAxeBalance || 0n) + yieldAmount;
         } else if (item === 'iron-pickaxe') {
-             updatedProfile.ironPickaxeBalance = (updatedProfile.ironPickaxeBalance || 0n) + 1n;
+             updatedProfile.ironPickaxeBalance = (updatedProfile.ironPickaxeBalance || 0n) + yieldAmount;
         }
         
         // Apply Update to UI
@@ -1647,9 +1648,9 @@
         showToast(`+${Number(xpGained).toLocaleString()} Crafting XP`, 'woodcutting-xp'); // Reusing purple style
         
         if (item === 'iron-axe') {
-            showToast('+1 Iron Axe', 'item-received');
+            showToast(`+${yieldAmount} Iron Axe`, 'item-received');
         } else if (item === 'iron-pickaxe') {
-            showToast('+1 Iron Pickaxe', 'item-received');
+            showToast(`+${yieldAmount} Iron Pickaxe`, 'item-received');
         }
         
         if (updatedProfile.craftingLevel > oldLevel) {
@@ -2364,8 +2365,8 @@
                         <div class="recipe-info">
                             <h4>Iron Axe</h4>
                             <div class="cost">
-                                <span>100 Iron Ore</span>
-                                <span>100 Oak Logs</span>
+                                <span>Consume 100 Iron Ore</span>
+                                <span>Consume 100 Oak Logs</span>
                             </div>
                         </div>
                         <button 
@@ -2383,8 +2384,8 @@
                         <div class="recipe-info">
                             <h4>Iron Pickaxe</h4>
                             <div class="cost">
-                                <span>100 Iron Ore</span>
-                                <span>100 Oak Logs</span>
+                                <span>Consume 100 Iron Ore</span>
+                                <span>Consume 100 Oak Logs</span>
                             </div>
                         </div>
                          <button 
@@ -2438,7 +2439,7 @@
                         <div class="quest-info">
                            <h4>Tree Charm</h4>
                            <div class="cost">
-                               <span style="color: #888;">Cost: 1,000 Gold Coins</span>
+                               <span style="color: #888;">Pay 1,000 Gold Coins</span>
                            </div>
                        </div>
                        
@@ -2465,7 +2466,7 @@
                         <div class="quest-info">
                            <h4>Rock Charm</h4>
                             <div class="cost">
-                               <span style="color: #888;">Cost: 1,000 Gold Coins</span>
+                               <span style="color: #888;">Pay 1,000 Gold Coins</span>
                            </div>
                        </div>
                        
@@ -2492,7 +2493,7 @@
                         <div class="quest-info">
                            <h4>Gold Charm</h4>
                             <div class="cost">
-                               <span style="color: #888;">Cost: 100K Gold Coins</span>
+                               <span style="color: #888;">Pay 100K Gold Coins</span>
                            </div>
                        </div>
                        
@@ -2830,11 +2831,11 @@
                                         <div class="recipe-icon"><TreeDeciduous size={24} color="#d32f2f" fill="#d32f2f"/></div>
                                         <div class="recipe-info">
                                             <h4>Maple</h4>
-                                            <div class="cost"><span>Destroy 1 Iron Axe</span></div>
+                                            <div class="cost"><span>Destroy 100 Iron Axes</span></div>
                                         </div>
                                         <button 
                                             class="action-btn"
-                                            disabled={!!actionLoading || (selectedProfile.ironAxeBalance || 0n) === 0n}
+                                            disabled={!!actionLoading || (selectedProfile.ironAxeBalance || 0n) < 100n}
                                             on:click={() => handleAction('chopMaple', selectedProfile.id)}
                                         >
                                             {#if actionLoading === 'chopMaple'}
@@ -2894,11 +2895,11 @@
                                         <div class="recipe-icon"><Mountain size={24} color="#111" fill="#111"/></div>
                                         <div class="recipe-info">
                                             <h4>Coal</h4>
-                                            <div class="cost"><span>Destroy 1 Iron Pickaxe</span></div>
+                                            <div class="cost"><span>Destroy 100 Iron Pickaxes</span></div>
                                         </div>
                                         <button  
                                             class="action-btn"
-                                            disabled={!!actionLoading || (selectedProfile.ironPickaxeBalance || 0n) === 0n}
+                                            disabled={!!actionLoading || (selectedProfile.ironPickaxeBalance || 0n) < 100n}
                                             on:click={() => handleAction('mineCoal', selectedProfile.id)}
                                         >
                                             {#if actionLoading === 'mineCoal'}
@@ -2930,7 +2931,7 @@
                                         <div class="recipe-icon"><Axe size={24} color="#b0bec5"/></div>
                                         <div class="recipe-info">
                                             <h4>Iron Axe</h4>
-                                            <div class="cost"><span>100 Iron Ore</span><span>100 Oak Logs</span></div>
+                                            <div class="cost"><span>Consume 100 Iron Ore</span><span>Consume 100 Oak Logs</span></div>
                                         </div>
                                         <button class="craft-btn" on:click={() => handleCraft('iron-axe')} disabled={!!actionLoading}>Craft</button>
                                     </div>
@@ -2939,7 +2940,7 @@
                                         <div class="recipe-icon"><Pickaxe size={24} color="#b0bec5"/></div>
                                         <div class="recipe-info">
                                             <h4>Iron Pickaxe</h4>
-                                            <div class="cost"><span>100 Iron Ore</span><span>100 Oak Logs</span></div>
+                                            <div class="cost"><span>Consume 100 Iron Ore</span><span>Consume 100 Oak Logs</span></div>
                                         </div>
                                         <button class="craft-btn" on:click={() => handleCraft('iron-pickaxe')} disabled={!!actionLoading}>Craft</button>
                                     </div>

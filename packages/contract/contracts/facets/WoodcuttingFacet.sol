@@ -94,8 +94,8 @@ contract WoodcuttingFacet {
         uint256 level = getLevel(currentXp);
 
         if (logId == MAPLE_LOG) {
-            require(ironAxe >= 1, "Not enough Iron Axes");
-            gs.items.burn(tba, IRON_AXE, 1);
+            require(ironAxe >= 100, "Not enough Iron Axes");
+            gs.items.burn(tba, IRON_AXE, 100);
         }
 
         uint256 amount = 1;
