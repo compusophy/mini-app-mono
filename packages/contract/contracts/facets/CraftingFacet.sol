@@ -18,7 +18,40 @@ contract CraftingFacet {
     uint256 constant IRON_AXE = 102;
     uint256 constant IRON_PICKAXE = 152;
 
-    event Crafted(address indexed tba, uint256 itemId, uint256 amount);
+    uint256 constant SKILL_CRAFTING = 3;
+
+    event Crafted(address indexed tba, uint256 itemId, uint256 amount, uint256 xpGained);
+
+    // Helpers
+    function cbrt(uint256 n) internal pure returns (uint256) {
+        uint256 x = 0;
+        uint256 y = 0;
+        uint256 z = 0;
+        
+        if (n == 0) {
+            return 0;
+        }
+        
+        x = n;
+        y = 1;
+        
+        while (x >= 2) {
+            x = x / 8; 
+            y = y * 2;
+        }
+        
+        z = y;
+        for (uint256 i = 0; i < 10; i++) {
+            z = (2 * z + n / (z * z)) / 3;
+        }
+        return z;
+    }
+
+    function getLevel(uint256 xp) internal pure returns (uint256) {
+        uint256 level = cbrt(xp / 20) + 1;
+        if (level > 200) return 200;
+        return level;
+    }
 
     // Smelt Iron Ore -> Iron Bar (1:1)
     function smeltIron(uint256 tokenId, uint256 amount) external {
@@ -63,9 +96,21 @@ contract CraftingFacet {
         gs.items.burn(tba, IRON_ORE, oreCost);
         gs.items.burn(tba, OAK_LOG, logCost);
 
+        // Calculate Logic
+        uint256 currentXp = gs.xp[tokenId][SKILL_CRAFTING];
+        uint256 level = getLevel(currentXp);
+        
+        uint256 amount = 1 * level;
+        uint256 xp = 10 * level; // Base 10 XP
+
+        if (level >= 200) xp = 0;
+        
+        // Update XP
+        gs.xp[tokenId][SKILL_CRAFTING] += xp;
+
         // Mint Result
-        gs.items.mint(tba, resultItem, 1, "");
-        emit Crafted(tba, resultItem, 1);
+        gs.items.mint(tba, resultItem, amount, "");
+        emit Crafted(tba, resultItem, amount, xp);
     }
 
     function _craft(uint256 tokenId, uint256 resultItem, uint256 amount) internal {
@@ -73,27 +118,40 @@ contract CraftingFacet {
         require(gs.profile.ownerOf(tokenId) == msg.sender, "Not profile owner");
         address tba = LibGame.getTBA(tokenId);
 
+        // Calculate Logic
+        uint256 currentXp = gs.xp[tokenId][SKILL_CRAFTING];
+        uint256 level = getLevel(currentXp);
+        
+        // Calculate total cost based on input amount
+        // Note: amount here is "how many times to craft" or "how many output items"?
+        // Usage in smeltIron(amount): "amount" usually means number of operations.
+        // BUT, if we apply level multiplier, the user requests "1 craft", pays for "1 craft", and gets "1 * Level" items.
+        // If user calls smeltIron(10), they pay for 10, and get 10 * Level.
+        
+        uint256 outputAmount = amount * level;
+        uint256 xpGained = 10 * amount * level; // 10 XP per base craft
+
+        if (level >= 200) xpGained = 0;
+
         if (resultItem == IRON_BAR) {
             // 1 Iron Ore -> 1 Iron Bar
             require(gs.items.balanceOf(tba, IRON_ORE) >= amount, "Not enough Iron Ore");
             gs.items.burn(tba, IRON_ORE, amount);
-            gs.items.mint(tba, IRON_BAR, amount, "");
+            gs.items.mint(tba, IRON_BAR, outputAmount, "");
         } 
         else if (resultItem == STEEL_BAR) {
-            // 1 Iron Bar + 2 Coal -> 1 Steel Bar (Let's require Bars for Steel, or Ore? simpler: Ore)
-            // Let's say: 1 Iron Ore + 2 Coal -> 1 Steel Bar for now to match ore-focus.
-            // Actually, standard is usually Bar + Coal. Let's require Iron Bars if we have them.
-            // But we haven't enforced making Iron Bars for Axes.
-            // Let's assume: 1 Iron Ore + 2 Coal -> 1 Steel Bar (Simplest flow)
+            // 1 Iron Ore + 2 Coal -> 1 Steel Bar
             require(gs.items.balanceOf(tba, IRON_ORE) >= amount, "Not enough Iron Ore");
             require(gs.items.balanceOf(tba, COAL_ORE) >= amount * 2, "Not enough Coal");
             
             gs.items.burn(tba, IRON_ORE, amount);
             gs.items.burn(tba, COAL_ORE, amount * 2);
-            gs.items.mint(tba, STEEL_BAR, amount, "");
+            gs.items.mint(tba, STEEL_BAR, outputAmount, "");
         }
+        
+        gs.xp[tokenId][SKILL_CRAFTING] += xpGained;
 
-        emit Crafted(tba, resultItem, amount);
+        emit Crafted(tba, resultItem, outputAmount, xpGained);
     }
 }
 

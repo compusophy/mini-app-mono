@@ -2893,6 +2893,24 @@ export const ABIS = {
           "type": "uint256"
         }
       ],
+      "name": "chopMaple",
+      "outputs": [],
+      "stateMutability": "nonpayable",
+      "type": "function"
+    },
+    {
+      "inputs": [
+        {
+          "internalType": "uint256",
+          "name": "tokenId",
+          "type": "uint256"
+        },
+        {
+          "internalType": "uint256",
+          "name": "version",
+          "type": "uint256"
+        }
+      ],
       "name": "chopOak",
       "outputs": [],
       "stateMutability": "nonpayable",
@@ -2968,6 +2986,16 @@ export const ABIS = {
         {
           "internalType": "uint256",
           "name": "woodcuttingLevel",
+          "type": "uint256"
+        },
+        {
+          "internalType": "uint256",
+          "name": "craftingXp",
+          "type": "uint256"
+        },
+        {
+          "internalType": "uint256",
+          "name": "craftingLevel",
           "type": "uint256"
         }
       ],
@@ -3583,6 +3611,24 @@ export const ABIS = {
           "type": "uint256"
         }
       ],
+      "name": "chopMaple",
+      "outputs": [],
+      "stateMutability": "nonpayable",
+      "type": "function"
+    },
+    {
+      "inputs": [
+        {
+          "internalType": "uint256",
+          "name": "tokenId",
+          "type": "uint256"
+        },
+        {
+          "internalType": "uint256",
+          "name": "version",
+          "type": "uint256"
+        }
+      ],
       "name": "chopOak",
       "outputs": [],
       "stateMutability": "nonpayable",
@@ -3660,6 +3706,16 @@ export const ABIS = {
         {
           "internalType": "uint256",
           "name": "woodcuttingLevel",
+          "type": "uint256"
+        },
+        {
+          "internalType": "uint256",
+          "name": "craftingXp",
+          "type": "uint256"
+        },
+        {
+          "internalType": "uint256",
+          "name": "craftingLevel",
           "type": "uint256"
         }
       ],

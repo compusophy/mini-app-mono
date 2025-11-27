@@ -11,6 +11,7 @@ contract WoodcuttingFacet {
     
     uint256 constant OAK_LOG = 201;
     uint256 constant WILLOW_LOG = 202;
+    uint256 constant MAPLE_LOG = 203;
     
     uint256 constant WOODCUTTING_CHARM = 402;
 
@@ -63,6 +64,12 @@ contract WoodcuttingFacet {
         _chop(tokenId, WILLOW_LOG);
     }
 
+    function chopMaple(uint256 tokenId, uint256 version) external {
+        LibGame.GameStorage storage gs = LibGame.gameStorage();
+        require(version >= gs.minGameVersion, "Client Version Outdated - Please Refresh");
+        _chop(tokenId, MAPLE_LOG);
+    }
+
     function _chop(uint256 tokenId, uint256 logId) internal {
         LibGame.GameStorage storage gs = LibGame.gameStorage();
         require(gs.profile.ownerOf(tokenId) == msg.sender, "Not profile owner");
@@ -77,11 +84,19 @@ contract WoodcuttingFacet {
 
         if (logId == WILLOW_LOG) {
             require(ironAxe > 0, "Iron Axe required for Willow");
+        } else if (logId == MAPLE_LOG) {
+            require(ironAxe > 0, "Iron Axe required for Maple");
+            // Could require Steel Axe if we had it, but Iron is top tier for now
         }
 
         // CALCULATE LEVEL
         uint256 currentXp = gs.xp[tokenId][2];
         uint256 level = getLevel(currentXp);
+
+        if (logId == MAPLE_LOG) {
+            require(ironAxe >= 1, "Not enough Iron Axes");
+            gs.items.burn(tba, IRON_AXE, 1);
+        }
 
         uint256 amount = 1;
         uint256 xp = 10; // Base XP for Oak
@@ -95,6 +110,8 @@ contract WoodcuttingFacet {
         } else if (logId == WILLOW_LOG) {
             xp = 25; // Base for Willow
             // if (ironAxe > 0) { ... }
+        } else if (logId == MAPLE_LOG) {
+            xp = 50; // Base for Maple
         }
 
         // APPLY CHARM MULTIPLIER

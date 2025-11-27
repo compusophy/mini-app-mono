@@ -61,12 +61,21 @@ contract StatsFacet {
     }
     
     // Batch reader for efficiency
-    function getStats(uint256 tokenId) external view returns (uint256 miningXp, uint256 miningLevel, uint256 woodcuttingXp, uint256 woodcuttingLevel) {
+    function getStats(uint256 tokenId) external view returns (
+        uint256 miningXp, 
+        uint256 miningLevel, 
+        uint256 woodcuttingXp, 
+        uint256 woodcuttingLevel,
+        uint256 craftingXp,
+        uint256 craftingLevel
+    ) {
         LibGame.GameStorage storage gs = LibGame.gameStorage();
         miningXp = gs.xp[tokenId][1];
         miningLevel = getLevel(miningXp);
         woodcuttingXp = gs.xp[tokenId][2];
         woodcuttingLevel = getLevel(woodcuttingXp);
+        craftingXp = gs.xp[tokenId][3];
+        craftingLevel = getLevel(craftingXp);
     }
 }
 
