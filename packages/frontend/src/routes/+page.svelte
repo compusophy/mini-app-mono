@@ -2279,7 +2279,7 @@
                         <!-- Wood -->
                         {#if (selectedProfile.woodBalance || 0n) > 0n}
                             <div class="inventory-item" title="Logs" on:click={() => selectedItem = { id: 201n, name: 'Oak Logs', balance: selectedProfile?.woodBalance || 0n }}>
-                                <div class="item-icon"><TreeDeciduous size={24} color="#4ade80"/></div> 
+                                <div class="item-icon"><TreeDeciduous size={24} color="#4ade80" fill="#4ade80"/></div> 
                                 <div class="item-count">{formatInventoryNumber(selectedProfile.woodBalance)}</div>
                             </div>
                         {/if}
@@ -2299,7 +2299,7 @@
                          <!-- V2: Iron Ore/Coal -->
                         {#if (selectedProfile.ironOreBalance || 0n) > 0n}
                              <div class="inventory-item" title="Iron Ore" on:click={() => selectedItem = { id: 301n, name: 'Iron Ore', balance: selectedProfile?.ironOreBalance || 0n }}>
-                                <div class="item-icon"><Mountain size={24} color="#b0bec5"/></div>
+                                <div class="item-icon"><Mountain size={24} color="#b0bec5" fill="#b0bec5"/></div>
                                 <div class="item-count">{formatInventoryNumber(selectedProfile.ironOreBalance)}</div>
                             </div>
                         {/if}
