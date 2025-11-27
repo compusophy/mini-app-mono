@@ -11,10 +11,6 @@ contract CraftingFacet {
     uint256 constant IRON_ORE = 301;
     uint256 constant COAL_ORE = 302;
     
-    // Intermediate
-    uint256 constant IRON_BAR = 401;
-    uint256 constant STEEL_BAR = 402;
-
     // Tools
     uint256 constant IRON_AXE = 102;
     uint256 constant STEEL_AXE = 103;
@@ -56,29 +52,7 @@ contract CraftingFacet {
         return level;
     }
 
-    // Smelt Iron Ore -> Iron Bar (1:1)
-    function smeltIron(uint256 tokenId, uint256 amount, uint256 version) external {
-        LibGame.GameStorage storage gs = LibGame.gameStorage();
-        require(version >= gs.minGameVersion, "Client Version Outdated - Please Refresh");
-        _craft(tokenId, IRON_BAR, amount);
-    }
-
-    // Smelt Iron Ore + Coal -> Steel Bar (1 Iron + 2 Coal -> 1 Steel)
-    function smeltSteel(uint256 tokenId, uint256 amount, uint256 version) external {
-        LibGame.GameStorage storage gs = LibGame.gameStorage();
-        require(version >= gs.minGameVersion, "Client Version Outdated - Please Refresh");
-        _craft(tokenId, STEEL_BAR, amount);
-    }
-
-    // Craft Iron Axe (100 Iron Bars + 100 Oak Logs)
-    // UPDATED: Per user request "100 iron ore and 100 oak logs", but logically
-    // usually we smelt first. User said "cost 100 iron ore and 100 oak logs".
-    // We can implement direct crafting or require bars.
-    // Let's stick to user's "100 Iron Ore + 100 Oak Logs" for simplicity unless specified.
-    // Wait, user later said "make smithing then... craft iron axes... make steel bars".
-    // This implies a Smithing step. 
-    // Let's implement: 100 Iron Ore + 100 Oak Logs -> Iron Axe (Direct, matching first request)
-    // AND allow smelting for future steel items.
+    // Craft Iron Axe (100 Iron Ore + 100 Oak Logs)
     function craftIronAxe(uint256 tokenId, uint256 version) external {
         LibGame.GameStorage storage gs = LibGame.gameStorage();
         require(version >= gs.minGameVersion, "Client Version Outdated - Please Refresh");
@@ -159,46 +133,4 @@ contract CraftingFacet {
         gs.items.mint(tba, resultItem, amount, "");
         emit Crafted(tba, resultItem, amount, xp);
     }
-
-    function _craft(uint256 tokenId, uint256 resultItem, uint256 amount) internal {
-        LibGame.GameStorage storage gs = LibGame.gameStorage();
-        require(gs.profile.ownerOf(tokenId) == msg.sender, "Not profile owner");
-        address tba = LibGame.getTBA(tokenId);
-
-        // Calculate Logic
-        uint256 currentXp = gs.xp[tokenId][SKILL_CRAFTING];
-        uint256 level = getLevel(currentXp);
-        
-        // Calculate total cost based on input amount
-        // Note: amount here is "how many times to craft" or "how many output items"?
-        // Usage in smeltIron(amount): "amount" usually means number of operations.
-        // BUT, if we apply level multiplier, the user requests "1 craft", pays for "1 craft", and gets "1 * Level" items.
-        // If user calls smeltIron(10), they pay for 10, and get 10 * Level.
-        
-        uint256 outputAmount = amount * level;
-        uint256 xpGained = 10 * amount * level; // 10 XP per base craft
-
-        if (level >= 200) xpGained = 0;
-
-        if (resultItem == IRON_BAR) {
-            // 1 Iron Ore -> 1 Iron Bar
-            require(gs.items.balanceOf(tba, IRON_ORE) >= amount, "Not enough Iron Ore");
-            gs.items.burn(tba, IRON_ORE, amount);
-            gs.items.mint(tba, IRON_BAR, outputAmount, "");
-        } 
-        else if (resultItem == STEEL_BAR) {
-            // 1 Iron Ore + 2 Coal -> 1 Steel Bar
-            require(gs.items.balanceOf(tba, IRON_ORE) >= amount, "Not enough Iron Ore");
-            require(gs.items.balanceOf(tba, COAL_ORE) >= amount * 2, "Not enough Coal");
-            
-            gs.items.burn(tba, IRON_ORE, amount);
-            gs.items.burn(tba, COAL_ORE, amount * 2);
-            gs.items.mint(tba, STEEL_BAR, outputAmount, "");
-        }
-        
-        gs.xp[tokenId][SKILL_CRAFTING] += xpGained;
-
-        emit Crafted(tba, resultItem, outputAmount, xpGained);
-    }
 }
-

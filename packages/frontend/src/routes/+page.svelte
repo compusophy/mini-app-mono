@@ -2338,13 +2338,13 @@
                         {/if}
                         {#if (selectedProfile.steelAxeBalance || 0n) > 0n}
                             <div class="inventory-item" title="Steel Axe" on:click={() => selectedItem = { id: 103n, name: 'Steel Axe', balance: selectedProfile?.steelAxeBalance || 0n }}>
-                                <div class="item-icon"><Axe size={24} color="#9e9e9e"/></div>
+                                <div class="item-icon"><Axe size={24} color="#9e9e9e" fill="#9e9e9e"/></div>
                                 <div class="item-count">{selectedProfile.steelAxeBalance}</div>
                             </div>
                         {/if}
                         {#if (selectedProfile.steelPickaxeBalance || 0n) > 0n}
                              <div class="inventory-item" title="Steel Pickaxe" on:click={() => selectedItem = { id: 153n, name: 'Steel Pickaxe', balance: selectedProfile?.steelPickaxeBalance || 0n }}>
-                                <div class="item-icon"><Pickaxe size={24} color="#9e9e9e"/></div>
+                                <div class="item-icon"><Pickaxe size={24} color="#9e9e9e" fill="#9e9e9e"/></div>
                                 <div class="item-count">{selectedProfile.steelPickaxeBalance}</div>
                             </div>
                         {/if}
@@ -2868,7 +2868,7 @@
                                     </h3>
                                     <div class="xp-bar-container">
                                         <div class="xp-bar">
-                                             <div class="xp-fill green" style="width: {calculateProgress(selectedProfile.woodcuttingXp).percent}%"></div>
+                                             <div class="xp-fill purple" style="width: {calculateProgress(selectedProfile.woodcuttingXp).percent}%"></div>
                                         </div>
                                         <span class="xp-text">{formatRsNumber(selectedProfile.woodcuttingXp)} / {formatRsNumber(calculateProgress(selectedProfile.woodcuttingXp).next)} XP</span>
                                     </div>
@@ -2926,7 +2926,7 @@
                                     </h3>
                                     <div class="xp-bar-container">
                                          <div class="xp-bar">
-                                             <div class="xp-fill grey" style="width: {calculateProgress(selectedProfile.miningXp).percent}%"></div>
+                                             <div class="xp-fill purple" style="width: {calculateProgress(selectedProfile.miningXp).percent}%"></div>
                                         </div>
                                         <span class="xp-text">{formatRsNumber(selectedProfile.miningXp)} / {formatRsNumber(calculateProgress(selectedProfile.miningXp).next)} XP</span>
                                     </div>
@@ -2983,7 +2983,7 @@
 
                             {:else if activeSkillTab === 'crafting'}
                                 <div class="skill-header">
-                                    <div class="skill-icon-large"><Hammer size={48} color="#9c27b0" /></div>
+                                    <div class="skill-icon-large"><Hammer size={48} color="#2563eb" /></div>
                                     <h3>
                                         Crafting
                                         <span class="level-text">Level {selectedProfile.craftingLevel}</span>
@@ -3016,7 +3016,7 @@
                                     </div>
                                     <!-- Steel Axe -->
                                     <div class="recipe-card">
-                                        <div class="recipe-icon"><Axe size={24} color="#9e9e9e"/></div>
+                                        <div class="recipe-icon"><Axe size={24} color="#9e9e9e" fill="#9e9e9e"/></div>
                                         <div class="recipe-info">
                                             <h4>Steel Axe</h4>
                                             <div class="cost"><span>Consume 100 Coal</span><span>Consume 100 Maple Logs</span></div>
@@ -3025,7 +3025,7 @@
                                     </div>
                                      <!-- Steel Pickaxe -->
                                     <div class="recipe-card">
-                                        <div class="recipe-icon"><Pickaxe size={24} color="#9e9e9e"/></div>
+                                        <div class="recipe-icon"><Pickaxe size={24} color="#9e9e9e" fill="#9e9e9e"/></div>
                                         <div class="recipe-info">
                                             <h4>Steel Pickaxe</h4>
                                             <div class="cost"><span>Consume 100 Coal</span><span>Consume 100 Maple Logs</span></div>
